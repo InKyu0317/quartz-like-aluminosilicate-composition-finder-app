@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "glass-composition-app"
+version = "0.1.0"
+description = "Streamlit app for glass composition search using GlassNet."
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "glasspy>=0.6",
+    "streamlit>=1.35",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["roadlab_matnav_lib*"]
