@@ -54,6 +54,11 @@ with st.sidebar:
         "SiO₂ 최소 (wt%)", min_value=0.0, max_value=100.0, value=50.0, step=1.0,
         help="SiO₂ 함량 하한. 재검색 없이 즉시 적용됩니다."
     )
+    al2o3_second = st.checkbox(
+        "Al₂O₃ 2위 조건",
+        value=True,
+        help="Al₂O₃이 SiO₂ 다음으로 가장 많은 산화물이어야 함 (알루미노실리케이트 정의). 재검색 없이 즉시 적용됩니다."
+    )
     run = st.button("Run Search", type="primary")
 
     st.divider()
@@ -123,10 +128,19 @@ oxide_cols = st.session_state["oxide_cols"]
 
 # ── apply post-search filters (no rerun needed) ──────────────────────────────
 sio2_mask = (df["SiO2"] >= sio2_min) if "SiO2" in df.columns else True
+if al2o3_second and "Al2O3" in df.columns:
+    other_oxide_cols = [c for c in oxide_cols if c not in ("SiO2", "Al2O3")]
+    if other_oxide_cols:
+        al2o3_mask = df[other_oxide_cols].lt(df["Al2O3"], axis=0).all(axis=1)
+    else:
+        al2o3_mask = True  # no other oxides to compare
+else:
+    al2o3_mask = True
 df_view = df[
     (df["n_oxides"] <= max_n_oxides) &
     (df["p_glass"] >= p_glass_min) &
-    sio2_mask
+    sio2_mask &
+    al2o3_mask
 ].head(top_n)
 
 # ── metrics row ───────────────────────────────────────────────────────────────
