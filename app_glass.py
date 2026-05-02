@@ -50,6 +50,10 @@ with st.sidebar:
         "P(glass) 최소", min_value=0.0, max_value=1.0, value=0.5, step=0.01,
         help="VITRIFY 모델 기준 유리화 확률 하한. 재검색 없이 즉시 적용됩니다."
     )
+    sio2_min = st.slider(
+        "SiO₂ 최소 (wt%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0,
+        help="SiO₂ 함량 하한. 재검색 없이 즉시 적용됩니다."
+    )
     run = st.button("Run Search", type="primary")
 
     st.divider()
@@ -118,9 +122,11 @@ df = st.session_state["df"]
 oxide_cols = st.session_state["oxide_cols"]
 
 # ── apply post-search filters (no rerun needed) ──────────────────────────────
+sio2_mask = (df["SiO2"] >= sio2_min) if "SiO2" in df.columns else True
 df_view = df[
     (df["n_oxides"] <= max_n_oxides) &
-    (df["p_glass"] >= p_glass_min)
+    (df["p_glass"] >= p_glass_min) &
+    sio2_mask
 ].head(top_n)
 
 # ── metrics row ───────────────────────────────────────────────────────────────
