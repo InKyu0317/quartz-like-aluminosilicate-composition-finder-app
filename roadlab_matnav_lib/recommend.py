@@ -18,24 +18,25 @@ import pandas as pd
 
 from . import oxides
 
-__all__ = ["sample_simplex", "recommend"]
+__all__ = ["sample_simplex", "recommend", "wt_to_mol_frame"]
 
 BoundsLike = Mapping[str, "tuple[float, float]"]
 
 
-def _wt_to_mol_frame(df_wt: pd.DataFrame) -> pd.DataFrame:
-    """Convert a DataFrame of wt% compositions to mol% row-by-row.
+def wt_to_mol_frame(df_wt: pd.DataFrame) -> pd.DataFrame:
+    """Convert a DataFrame of wt% compositions to mol% (vectorized).
 
-    Uses :func:`roadlab_matnav_lib.oxides.wt_to_mol` for each row.
-    Zero-valued columns are preserved (filled with 0.0) so the column
-    layout matches ``df_wt``.
+    Each column is divided by its oxide molecular weight, then each row is
+    normalised to sum to 100. Vectorized over all rows at once — avoids the
+    O(n) Python loop of the previous ``iterrows()`` implementation.
     """
-    rows = []
-    for _, row in df_wt.iterrows():
-        comp = {k: float(v) for k, v in row.items() if float(v) > 0}
-        mol = oxides.wt_to_mol(comp)
-        rows.append(mol)
-    return pd.DataFrame(rows, columns=df_wt.columns).fillna(0.0)
+    mw_map = {ox: oxides.info(ox).mw for ox in df_wt.columns}
+    mw_arr = np.array([mw_map[c] for c in df_wt.columns], dtype=float)
+    mol = df_wt.to_numpy(dtype=float) / mw_arr  # broadcast divide by MW
+    row_sums = mol.sum(axis=1, keepdims=True)
+    row_sums = np.where(row_sums == 0, 1.0, row_sums)  # avoid div-by-zero
+    mol = mol / row_sums * 100.0
+    return pd.DataFrame(mol, columns=df_wt.columns)
 
 
 def sample_simplex(
@@ -174,17 +175,19 @@ def recommend(
         fixed=fixed, seed=seed,
         max_attempts_factor=max_attempts_factor,
     )
-    samples_mol = _wt_to_mol_frame(samples_wt)
+    samples_mol = wt_to_mol_frame(samples_wt)
 
     eps = np.asarray(predictor.batch_dielectric_constant(samples_mol), dtype=float)
     tan = np.asarray(predictor.batch_dielectric_loss(samples_mol), dtype=float)
-    # Only ε_r is used as a hard pass/fail filter.
-    # tan_delta is NOT filtered out — it is maximised via the score instead.
-    # This prevents the parcoords slider from appearing artificially capped at
-    # the tan_delta_range upper bound.
-    mask = predictor.batch_in_range(
-        samples_mol, eps_r_range=eps_r_range, tan_delta_range=None
-    )
+    # Build the filter mask directly from already-computed arrays — avoids
+    # extra GlassNet.predict() calls that batch_in_range() would trigger.
+    mask = np.ones(len(samples_mol), dtype=bool)
+    if eps_r_range is not None:
+        lo_eps, hi_eps = float(eps_r_range[0]), float(eps_r_range[1])
+        mask &= np.isfinite(eps) & (eps >= lo_eps) & (eps <= hi_eps)
+    if tan_delta_range is not None:
+        lo_tan, hi_tan = float(tan_delta_range[0]), float(tan_delta_range[1])
+        mask &= np.isfinite(tan) & (tan >= lo_tan) & (tan <= hi_tan)
     mask = np.asarray(mask, dtype=bool)
 
     kept = samples_wt.loc[mask].reset_index(drop=True).copy()  # wt% output

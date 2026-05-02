@@ -7,7 +7,7 @@ Submodules:
   - ternary:   python-ternary heatmap helpers
 """
 
-from . import oxides, predict, recommend, screen, ternary, ternary_geom, web
+from . import oxides, predict, recommend
 
 __version__ = "0.1.0"
 
@@ -16,8 +16,4 @@ __all__ = [
     "oxides",
     "predict",
     "recommend",
-    "screen",
-    "ternary",
-    "ternary_geom",
-    "web",
 ]
