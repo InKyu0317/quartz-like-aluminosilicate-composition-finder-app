@@ -51,7 +51,7 @@ with st.sidebar:
         help="VITRIFY 모델 기준 유리화 확률 하한. 재검색 없이 즉시 적용됩니다."
     )
     sio2_min = st.slider(
-        "SiO₂ 최소 (wt%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0,
+        "SiO₂ 최소 (wt%)", min_value=0.0, max_value=100.0, value=50.0, step=1.0,
         help="SiO₂ 함량 하한. 재검색 없이 즉시 적용됩니다."
     )
     run = st.button("Run Search", type="primary")
