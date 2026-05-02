@@ -40,10 +40,12 @@ with st.sidebar:
         "\u03b5_r range", min_value=3.0, max_value=15.0, value=(3.77, 10.0), step=0.1
     )
     max_n_oxides = st.slider(
-        "Max oxide count", min_value=2, max_value=len(active_oxides), value=len(active_oxides)
+        "Max oxide count", min_value=3, max_value=len(active_oxides), value=len(active_oxides),
+        help="이 값을 변경하면 **Re-Run Search**가 필요합니다. 줄이면 해당 수 이하의 산화물 조합에서 직접 샘플링합니다."
     )
     n_samples = st.select_slider(
-        "Sample count", options=[10_000, 30_000, 50_000, 100_000], value=50_000
+        "Target candidates", options=[2_000, 5_000, 10_000, 20_000], value=5_000,
+        help="ε_r 필터를 통과하는 유효 조성 목표 수. 범위가 좁을수록 더 많이 샘플링합니다 (최대 50× 예산)."
     )
     top_n = st.slider("Rows to display", min_value=10, max_value=200, value=30)
     p_glass_min = st.slider(
@@ -74,19 +76,19 @@ def load_predictor():
 
 # ── search (cached by params) ─────────────────────────────────────────────────
 @st.cache_data(show_spinner="\uc870\uc131 \uc0d8\ud50c\ub9c1 \uc911\u2026", max_entries=8)
-def run_search(oxide_tuple, eps_min, eps_max, n_samples, seed=0):
+def run_search(oxide_tuple, eps_min, eps_max, n_samples, max_n_oxides, seed=0):
     predictor = load_predictor()
     oxides = list(oxide_tuple)
+    use_sparse = max_n_oxides < len(oxides)
     df = rml.recommend.recommend(
         predictor,
         active_oxides=oxides,
         eps_r_range=(eps_min, eps_max),
         tan_delta_range=(0.0, 1.0),
         n_samples=n_samples,
-        fixed=FIXED,
         seed=seed,
-        max_attempts_factor=1000,
         oxide_threshold=OXIDE_THRESHOLD,
+        max_n_oxides=max_n_oxides,
     )
 
     oxide_cols = [c for c in oxides if c in df.columns]
@@ -110,14 +112,21 @@ def run_search(oxide_tuple, eps_min, eps_max, n_samples, seed=0):
     df["dT_K"]    = thermal["delta_T"].to_numpy()
 
     df.index += 1  # 1-based rank
-    return df, oxide_cols, n_total
+    return df, oxide_cols, n_total, n_samples
 
 # ── run only when button clicked ──────────────────────────────────────────────
 if run:
-    df, oxide_cols, n_total = run_search(tuple(active_oxides), eps_min, eps_max, n_samples)
+    df, oxide_cols, n_total, n_target = run_search(tuple(active_oxides), eps_min, eps_max, n_samples, max_n_oxides)
     st.session_state["df"] = df
+    st.session_state["searched_max_n_oxides"] = max_n_oxides
     st.session_state["oxide_cols"] = oxide_cols
     st.session_state["n_total"] = n_total
+    st.session_state["n_target"] = n_target
+    if n_total < n_target:
+        st.warning(
+            f"ε_r 범위가 좁아 목표 {n_target:,}개 중 **{n_total:,}개**만 수집됐습니다. "
+            f"Target candidates를 줄이거나 ε_r 범위를 넓히면 더 많은 후보를 얻을 수 있습니다."
+        )
 
 if "df" not in st.session_state:
     st.info("\uc67c\ucabd \uc0ac\uc774\ub4dc\ubc14\uc5d0\uc11c \ud30c\ub77c\ubbf8\ud130\ub97c \uc124\uc815\ud558\uace0 **Run Search** \ub97c \ub204\ub974\uc138\uc694.")
@@ -136,8 +145,8 @@ if al2o3_second and "Al2O3" in df.columns:
         al2o3_mask = True  # no other oxides to compare
 else:
     al2o3_mask = True
+# n_oxides range is guaranteed by recommend() — no additional filter needed here
 df_view = df[
-    (df["n_oxides"] <= max_n_oxides) &
     (df["p_glass"] >= p_glass_min) &
     sio2_mask &
     al2o3_mask

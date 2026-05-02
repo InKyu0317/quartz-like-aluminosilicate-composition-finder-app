@@ -6,6 +6,41 @@
 
 ---
 
+# Phase 4: Stratified Sparse Sampling + Iterative Filtering (완료)
+
+## 배경 / 문제
+
+- Full-simplex Dirichlet(11개)에서 n_oxides ≤ 5 조성 확률 ≈ 0% → 우수한 소수-산화물 조성 탐색 불가
+- max_n_oxides 슬라이더가 post-filter 역할만 했고 실제 샘플링에 반영 안 됨
+- ε_r 범위가 좁을수록 버려지는 샘플이 많아져 결과 수 감소
+
+## 해결책
+
+### T7: Stratified Sparse Sampling
+- k = 3 .. max_k 각 그룹에 균등 할당량(quota) 배정
+- 각 k그룹이 quota를 채울 때까지 오버샘플링 → threshold 탈락에 강건
+- vectorized(`np.put_along_axis`) 구현
+
+### T10: Iterative Batch Sampling
+- `n_samples` = ε_r·n_oxides 필터 통과 후 **목표 결과 수**
+- acceptance rate 실시간 추적 → 다음 batch_size 자동 조정
+- 예산: `n_samples × max_attempts_factor (=50)` 총 예측 한도
+- budget 소진 시 `st.warning()` 경고 표시
+
+### T11: n_oxides 조기 필터
+- `recommend()` 내부 mask에 `(n_ox >= 3) & (n_ox <= effective_max_k)` 추가
+- 샘플링 루프 안에서 즉시 제거 → 목표 수 카운트에서도 제외
+
+## 결과
+
+| max_k | n=3~k-2 비율 | n=max_k 비율 | 소요(n=2000, 넓은 범위) |
+|-------|-------------|-------------|------------------------|
+| 5     | ~36%        | ~28%        | 0.6s                   |
+| 9     | ~15%        | ~7%         | 0.6s                   |
+| 11    | ~12%        | ~4%         | 0.6s                   |
+
+---
+
 ## 의존성 그래프
 
 ```

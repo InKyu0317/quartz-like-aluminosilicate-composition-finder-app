@@ -145,6 +145,88 @@ def _apply_threshold(df_wt: pd.DataFrame, threshold: float) -> pd.DataFrame:
     return cleaned.div(row_sums, axis=0).mul(100.0).reset_index(drop=True)
 
 
+def _sample_sparse_subsets(
+    active_oxides: Sequence[str],
+    n_samples: int,
+    max_k: int,
+    oxide_threshold: float,
+    seed: Optional[int],
+    min_k: int = 3,
+) -> pd.DataFrame:
+    """Sample ``n_samples`` compositions with exactly equal counts per oxide number.
+
+    Stratified by k (= intended subset size, min_k..max_k):
+    - Each k gets a fixed quota = n_samples // num_groups
+    - Oversamples each k until quota is filled, so threshold dropout does not
+      create imbalance between groups.
+    - SiO2 is always included when present.
+    - Rows where threshold zeroed SiO2 or left fewer than min_k oxides are
+      discarded and replaced.
+    """
+    min_k = max(min_k, 2)
+    rng = np.random.default_rng(seed)
+    oxides_list = list(active_oxides)
+    K = len(oxides_list)
+    sio2_idx = oxides_list.index("SiO2") if "SiO2" in oxides_list else None
+    other_idx = np.array([i for i in range(K) if i != sio2_idx])
+
+    num_groups = max_k - min_k + 1
+    quota_base = n_samples // num_groups
+    remainder = n_samples % num_groups
+
+    def _generate_batch_for_k(k: int, batch_size: int) -> pd.DataFrame:
+        """Vectorized: generate batch_size rows each with k-oxide Dirichlet."""
+        n_others = min(k - 1, len(other_idx)) if sio2_idx is not None else k
+        actual_k = (n_others + 1) if sio2_idx is not None else k
+
+        if sio2_idx is not None:
+            if n_others > 0:
+                # Random permutation of other_idx for each row, take first n_others
+                perms = rng.permuted(
+                    np.tile(other_idx, (batch_size, 1)), axis=1
+                )
+                chosen = perms[:, :n_others]  # (batch_size, n_others)
+                subset_idx = np.column_stack(
+                    [np.full(batch_size, sio2_idx), chosen]
+                )  # (batch_size, actual_k)
+            else:
+                subset_idx = np.full((batch_size, 1), sio2_idx)
+        else:
+            perms = rng.permuted(np.tile(np.arange(K), (batch_size, 1)), axis=1)
+            subset_idx = perms[:, :k]
+
+        dirichlet = rng.dirichlet(np.ones(actual_k), size=batch_size) * 100.0
+        rows = np.zeros((batch_size, K), dtype=float)
+        np.put_along_axis(rows, subset_idx, dirichlet, axis=1)
+
+        df = pd.DataFrame(rows, columns=oxides_list)
+        if oxide_threshold > 0.0:
+            df = _apply_threshold(df, oxide_threshold)
+        # Keep only rows with min_k active oxides and SiO2 intact
+        valid = (df > 0).sum(axis=1) >= min_k
+        if sio2_idx is not None:
+            valid &= df["SiO2"] > 0
+        return df.loc[valid].reset_index(drop=True)
+
+    all_dfs: list[pd.DataFrame] = []
+    for gi, k in enumerate(range(min_k, max_k + 1)):
+        target = quota_base + (1 if gi < remainder else 0)
+        collected: list[pd.DataFrame] = []
+        total = 0
+        oversample = 3  # initial oversampling factor
+        while total < target:
+            needed = target - total
+            batch_size = max(needed * oversample, 256)
+            chunk = _generate_batch_for_k(k, batch_size)
+            collected.append(chunk)
+            total += len(chunk)
+            oversample = max(oversample, int(batch_size / max(len(chunk), 1)) + 1)
+        group_df = pd.concat(collected, ignore_index=True).head(target)
+        all_dfs.append(group_df)
+
+    return pd.concat(all_dfs, ignore_index=True)
+
+
 def recommend(
     predictor,
     active_oxides: Sequence[str],
@@ -158,6 +240,7 @@ def recommend(
     max_attempts_factor: int = 50,
     score_weights: "tuple[float, float]" = (0.0, 1.0),
     oxide_threshold: float = 0.0,
+    max_n_oxides: Optional[int] = None,
 ) -> pd.DataFrame:
     """Sample compositions on the ``active_oxides`` simplex, predict ε_r and
     tan δ, filter by the requested ranges, then sort by a combined closeness
@@ -178,61 +261,105 @@ def recommend(
     If ``eps_r_range`` is ``None`` the ε_r component is 0.
     If ``tan_delta_range`` is ``None`` the tan δ component is 0.
 
-    ``max_attempts_factor`` is forwarded to :func:`sample_simplex`; raise it
-    when ``fixed`` constraints are tight (e.g. ``SiO2 >= 50`` on an 8-oxide
-    simplex) to avoid the rejection-sampling budget being exceeded.
+    ``n_samples`` is the **target number of valid results** to collect after
+    the ε_r / tan δ filter.  Sampling proceeds in adaptive batches until this
+    target is met or ``n_samples × max_attempts_factor`` total predictions are
+    exhausted.  Raise ``max_attempts_factor`` when the ε_r window is very
+    narrow and the default budget is not enough.
     """
     extra_props = tuple(extra_props)
     cols_out = (
         list(active_oxides) + ["eps_r", "tan_delta"] + list(extra_props) + ["score"]
     )
 
-    # sample_simplex returns compositions in wt%.  GlassNet expects mol%, so we
-    # convert each row before any predictor call.  The output DataFrame keeps
-    # the original wt% values so callers see weight-percent compositions.
-    samples_wt = sample_simplex(
-        active_oxides, n_samples,
-        fixed=fixed, seed=seed,
-        max_attempts_factor=max_attempts_factor,
-    )
-    # Zero out trace oxides below threshold and renormalize BEFORE any model
-    # call so predictions reflect the actual intended composition, not Dirichlet
-    # noise. e.g. a 3-component composition has exactly 3 non-zero oxides.
-    if oxide_threshold > 0.0:
-        samples_wt = _apply_threshold(samples_wt, oxide_threshold)
-    samples_mol = wt_to_mol_frame(samples_wt)
+    effective_max_k = max_n_oxides if max_n_oxides is not None else len(active_oxides)
 
-    # Single GlassNet call for both properties (2× faster than separate calls).
-    eps, tan = predictor.batch_eps_tan(samples_mol)
-    eps = np.asarray(eps, dtype=float)
-    tan = np.asarray(tan, dtype=float)
-    # Build the filter mask directly from already-computed arrays — avoids
-    # extra GlassNet.predict() calls that batch_in_range() would trigger.
-    mask = np.ones(len(samples_mol), dtype=bool)
+    # Pre-compute filter bounds once.
+    lo_eps = hi_eps = lo_tan = hi_tan = None
     if eps_r_range is not None:
         lo_eps, hi_eps = float(eps_r_range[0]), float(eps_r_range[1])
-        mask &= np.isfinite(eps) & (eps >= lo_eps) & (eps <= hi_eps)
     if tan_delta_range is not None:
         lo_tan, hi_tan = float(tan_delta_range[0]), float(tan_delta_range[1])
-        mask &= np.isfinite(tan) & (tan >= lo_tan) & (tan <= hi_tan)
-    mask = np.asarray(mask, dtype=bool)
 
-    kept = samples_wt.loc[mask].reset_index(drop=True).copy()  # wt% output
-    if kept.empty:
+    # ── Iterative sampling until n_samples *valid* results are collected ──────
+    # n_samples is the TARGET valid-result count (after ε_r + tan_δ filter).
+    # We sample in batches, predict, keep passing rows, and adapt the next
+    # batch size based on the observed acceptance rate.  This way:
+    #   - Wide ε_r range (high acceptance) → one batch, no waste.
+    #   - Narrow ε_r range (low acceptance) → keeps sampling up to budget.
+    # Hard budget: max_attempts_factor × n_samples total predictions.
+    target = n_samples
+    max_budget = n_samples * max_attempts_factor
+    # First batch: sample exactly `target` so that stratified k-quotas are
+    # correct when acceptance rate is near 1 (e.g. tests / wide range).
+    batch_size = min(target, 20_000)
+
+    valid_wt:  list[pd.DataFrame]  = []
+    valid_eps: list[np.ndarray]    = []
+    valid_tan: list[np.ndarray]    = []
+    n_valid        = 0
+    total_sampled  = 0
+    current_seed   = seed
+
+    while n_valid < target and total_sampled < max_budget:
+        to_sample = min(batch_size, max_budget - total_sampled)
+        if to_sample <= 0:
+            break
+
+        batch_wt  = _sample_sparse_subsets(
+            active_oxides, to_sample, effective_max_k, oxide_threshold,
+            current_seed, min_k=3,
+        )
+        batch_mol = wt_to_mol_frame(batch_wt)
+        eps_arr, tan_arr = predictor.batch_eps_tan(batch_mol)
+        eps_arr = np.asarray(eps_arr, dtype=float)
+        tan_arr = np.asarray(tan_arr, dtype=float)
+
+        mask = np.ones(len(batch_mol), dtype=bool)
+        # n_oxides range: only count compositions with 3 ≤ n ≤ effective_max_k
+        # toward the target. _sample_sparse_subsets already guarantees this, but
+        # the explicit check makes the contract robust to any future change.
+        n_ox = (batch_wt > (oxide_threshold if oxide_threshold > 0.0 else 0.0)).sum(axis=1).to_numpy()
+        mask &= (n_ox >= 3) & (n_ox <= effective_max_k)
+        if lo_eps is not None:
+            mask &= np.isfinite(eps_arr) & (eps_arr >= lo_eps) & (eps_arr <= hi_eps)
+        if lo_tan is not None:
+            mask &= np.isfinite(tan_arr) & (tan_arr >= lo_tan) & (tan_arr <= hi_tan)
+
+        n_pass = int(mask.sum())
+        if n_pass > 0:
+            valid_wt.append(batch_wt.loc[mask].reset_index(drop=True))
+            valid_eps.append(eps_arr[mask])
+            valid_tan.append(tan_arr[mask])
+            n_valid += n_pass
+
+        total_sampled += to_sample
+        if current_seed is not None:
+            current_seed += 1
+
+        # Adapt next batch size from observed acceptance rate.
+        if n_valid < target and total_sampled > 0:
+            rate = n_valid / total_sampled
+            if rate > 0:
+                needed = target - n_valid
+                batch_size = min(max(int(needed / rate * 1.5), 256), 20_000)
+
+    if n_valid == 0:
         return pd.DataFrame(columns=cols_out)
 
-    kept["eps_r"] = eps[mask]
-    kept["tan_delta"] = tan[mask]
+    kept = pd.concat(valid_wt, ignore_index=True).head(target).copy()
+    kept["eps_r"]    = np.concatenate(valid_eps)[:target]
+    kept["tan_delta"] = np.concatenate(valid_tan)[:target]
 
     for prop in extra_props:
-        vals = np.asarray(predictor.batch_property(samples_mol, prop), dtype=float)
-        kept[prop] = vals[mask]
+        kept_mol = wt_to_mol_frame(kept[list(active_oxides)])
+        kept[prop] = np.asarray(predictor.batch_property(kept_mol, prop), dtype=float)
 
     w_eps, w_tan = float(score_weights[0]), float(score_weights[1])
 
     if eps_r_range is not None:
         lo, hi = float(eps_r_range[0]), float(eps_r_range[1])
-        mid = 0.5 * (lo + hi)
+        mid  = 0.5 * (lo + hi)
         half = max((hi - lo) / 2.0, 1e-12)
         eps_component = np.clip(
             1.0 - np.abs(kept["eps_r"].to_numpy() - mid) / half, 0.0, 1.0
@@ -241,16 +368,10 @@ def recommend(
         eps_component = np.ones(len(kept))
 
     if w_tan > 0.0 and len(kept) > 0:
-        # Use raw tan_delta as the component (no per-call normalisation).
-        # Normalising by per-preset max causes cross-preset rank inversion:
-        # e.g. alkali_free max=0.003 → score=1.0 beats abs tan=0.011 →
-        # score=0.22, even though 0.011 > 0.003.
-        # With raw values, score = tan_delta and the global ranking is correct.
         tan_component = kept["tan_delta"].to_numpy()
     else:
         tan_component = np.zeros(len(kept))
 
     kept["score"] = w_eps * eps_component + w_tan * tan_component
-
     kept = kept.sort_values("score", ascending=False, kind="mergesort").reset_index(drop=True)
     return kept[cols_out]
