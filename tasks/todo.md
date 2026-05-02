@@ -26,3 +26,9 @@
 - [x] **UI**: 앱 타이틀 변경 / 산화물 풀 표시 / 배경 그라디언트 / Al₂O₃ 2위 조건 / SiO₂ 최소 필터
 - [x] **테스트**: 87개 단위·통합·회귀 테스트 (4개 파일)
 - [x] **배포**: Hugging Face Spaces (Docker) 배포
+- [x] **Adaptive n_samples**: ε_r 범위 폭 기반 자동 결정 (폭 ≥ 4 → 20,000, 최소 2,000), 슬라이더 제거
+- [x] **온도 단위**: Tg / Tx / Tliq / ΔT / CTE 단위 K → °C 전환 (표 + 상세 뷰)
+- [x] **Bayesian Optimization**: `roadlab_matnav_lib/bayesian_opt.py` — GP(Matern ARD) + EI 순차 최적화
+  - Seed: 랜덤 검색 상위 N개를 초기 관측값으로 사용
+  - 매 iteration: GP 적합 → 후보 생성(Exploitation 75% + Exploration 25%) → EI 최대 지점 GlassNet 평가
+  - 결과: 수렴 곡선, 개선 이력 테이블(새 best 발견 시점만), 산화물 범위 차트(seed 범위 + BO best 오버레이)

@@ -43,10 +43,6 @@ with st.sidebar:
         "Max oxide count", min_value=3, max_value=len(active_oxides), value=len(active_oxides),
         help="이 값을 변경하면 **Re-Run Search**가 필요합니다. 줄이면 해당 수 이하의 산화물 조합에서 직접 샘플링합니다."
     )
-    n_samples = st.select_slider(
-        "Target candidates", options=[2_000, 5_000, 10_000, 20_000], value=5_000,
-        help="ε_r 필터를 통과하는 유효 조성 목표 수. 범위가 좁을수록 더 많이 샘플링합니다 (최대 50× 예산)."
-    )
     top_n = st.slider("Rows to display", min_value=10, max_value=200, value=30)
     p_glass_min = st.slider(
         "P(glass) 최소", min_value=0.0, max_value=1.0, value=0.5, step=0.01,
@@ -63,6 +59,10 @@ with st.sidebar:
     )
     run = st.button("Run Search", type="primary")
 
+    st.divider()
+    _eps_width = eps_max - eps_min
+    _n_auto = int(np.clip(round(_eps_width / 4.0 * 20_000 / 1_000) * 1_000, 2_000, 20_000))
+    st.caption(f"**Auto target**: {_n_auto:,}개 (ε_r 범위 {_eps_width:.1f} 기준)")
     st.divider()
     st.caption(f"**Oxide pool** ({len(active_oxides)} oxides)")
     st.caption("  ".join(f"`{ox}`" for ox in active_oxides))
@@ -105,9 +105,9 @@ def run_search(oxide_tuple, eps_min, eps_max, n_samples, max_n_oxides, seed=0):
     mol_df = wt_to_mol_frame(df[oxide_cols].fillna(0.0))
     df["p_glass"] = predictor.batch_glass_probability(mol_df)
     thermal = predictor.batch_thermal(mol_df)
-    df["Tg_K"]    = thermal["Tg"].to_numpy()
-    df["Tx_K"]    = thermal["Tx"].to_numpy()
-    df["Tliq_K"]  = thermal["Tliquidus"].to_numpy()
+    df["Tg_K"]    = thermal["Tg"].to_numpy() - 273.15
+    df["Tx_K"]    = thermal["Tx"].to_numpy() - 273.15
+    df["Tliq_K"]  = thermal["Tliquidus"].to_numpy() - 273.15
     df["CTE_1e6"] = thermal["CTE_per_K"].to_numpy() * 1e6
     df["dT_K"]    = thermal["delta_T"].to_numpy()
 
@@ -115,8 +115,14 @@ def run_search(oxide_tuple, eps_min, eps_max, n_samples, max_n_oxides, seed=0):
     return df, oxide_cols, n_total, n_samples
 
 # ── run only when button clicked ──────────────────────────────────────────────
+# Auto-compute n_samples from ε_r range width.
+# Anchor: width=4 → 20,000 (so any width≥4 hits the ceiling).
+# Narrower ranges scale down proportionally. Floor: 2,000. Ceiling: 20,000.
+_eps_width = eps_max - eps_min
+n_samples_auto = int(np.clip(round(_eps_width / 4.0 * 20_000 / 1_000) * 1_000, 2_000, 20_000))
+
 if run:
-    df, oxide_cols, n_total, n_target = run_search(tuple(active_oxides), eps_min, eps_max, n_samples, max_n_oxides)
+    df, oxide_cols, n_total, n_target = run_search(tuple(active_oxides), eps_min, eps_max, n_samples_auto, max_n_oxides)
     st.session_state["df"] = df
     st.session_state["searched_max_n_oxides"] = max_n_oxides
     st.session_state["oxide_cols"] = oxide_cols
@@ -125,7 +131,7 @@ if run:
     if n_total < n_target:
         st.warning(
             f"ε_r 범위가 좁아 목표 {n_target:,}개 중 **{n_total:,}개**만 수집됐습니다. "
-            f"Target candidates를 줄이거나 ε_r 범위를 넓히면 더 많은 후보를 얻을 수 있습니다."
+            f"ε_r 범위를 넓히면 더 많은 후보를 얻을 수 있습니다."
         )
 
 if "df" not in st.session_state:
@@ -153,21 +159,22 @@ df_view = df[
 ].head(top_n)
 
 # ── metrics row ───────────────────────────────────────────────────────────────
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total candidates", f"{st.session_state.get('n_total', len(df)):,}")
+col1, col2, col3, col4, col5 = st.columns(5)
+col1.metric("Target / Got", f"{st.session_state.get('n_target', '?'):,} / {st.session_state.get('n_total', len(df)):,}")
 col2.metric("Shown (after filter)", f"{len(df_view):,}")
 best = df_view.iloc[0] if len(df_view) else df.iloc[0]
-col3.metric("Best \u03b5_r", f"{best['eps_r']:.3f}")
-col4.metric("Best tan\u03b4 / quartz", f"{best[COL_XQUARTZ]:.2f}\u00d7")
+col3.metric("Best ε_r", f"{best['eps_r']:.3f}")
+col4.metric("Best tanδ / quartz", f"{best[COL_XQUARTZ]:.2f}×")
+col5.metric("ε_r width → n", f"{eps_max-eps_min:.1f} → {st.session_state.get('n_target', n_samples_auto):,}")
 
 # ── table ─────────────────────────────────────────────────────────────────────
 COL_RENAME = {
     "p_glass":  "P(glass)",
-    "Tg_K":     "Tg (K)",
-    "Tx_K":     "Tx (K)",
-    "Tliq_K":   "Tliq (K)",
-    "CTE_1e6":  "CTE (\u00d710\u207b\u2076/K)",
-    "dT_K":     "\u0394T (K)",
+    "Tg_K":     "Tg (°C)",
+    "Tx_K":     "Tx (°C)",
+    "Tliq_K":   "Tliq (°C)",
+    "CTE_1e6":  "CTE (\u00d710\u207b\u2076/\u00b0C)",
+    "dT_K":     "\u0394T (\u00b0C)",
 }
 display_cols = (
     ["eps_r", "tan_delta", "\u00d7quartz", "score", "n_oxides"]
@@ -181,11 +188,11 @@ format_dict = {
     "\u00d7quartz":              "{:.2f}\u00d7",
     "score":                     "{:.4f}",
     "P(glass)":                  "{:.2f}",
-    "Tg (K)":                    "{:.0f}",
-    "Tx (K)":                    "{:.0f}",
-    "Tliq (K)":                  "{:.0f}",
-    "CTE (\u00d710\u207b\u2076/K)": "{:.2f}",
-    "\u0394T (K)":               "{:.0f}",
+    "Tg (°C)":                   "{:.0f}",
+    "Tx (°C)":                   "{:.0f}",
+    "Tliq (°C)":                 "{:.0f}",
+    "CTE (\u00d710\u207b\u2076/\u00b0C)": "{:.2f}",
+    "\u0394T (\u00b0C)":               "{:.0f}",
     **{c: "{:.1f}" for c in oxide_cols},
 }
 st.dataframe(
@@ -214,12 +221,224 @@ if rank <= len(df_view):
         st.write(f"**n_oxides** = {int(row['n_oxides'])}")
         st.divider()
         st.write(f"**P(glass)** = {row['p_glass']:.2f}")
-        st.write(f"**Tg** = {row['Tg_K']:.0f} K")
-        st.write(f"**Tx** = {row['Tx_K']:.0f} K  (\u0394T = {row['dT_K']:.0f} K)")
-        st.write(f"**Tliq** = {row['Tliq_K']:.0f} K")
-        st.write(f"**CTE** = {row['CTE_1e6']:.2f} \u00d710\u207b\u2076/K")
+        st.write(f"**Tg** = {row['Tg_K']:.0f} °C")
+        st.write(f"**Tx** = {row['Tx_K']:.0f} °C  (\u0394T = {row['dT_K']:.0f} °C)")
+        st.write(f"**Tliq** = {row['Tliq_K']:.0f} °C")
+        st.write(f"**CTE** = {row['CTE_1e6']:.2f} \u00d710\u207b\u2076/°C")
     with c2:
         st.write("**Composition (wt%)**")
         comp_df = pd.DataFrame(present.items(), columns=["Oxide", "wt%"]).set_index("Oxide")
         st.dataframe(comp_df.style.format({"wt%": "{:.1f}"}), use_container_width=True)
         st.bar_chart(comp_df)
+
+# ── Bayesian Optimization Refinement ─────────────────────────────────────────
+st.divider()
+with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from roadlab_matnav_lib.bayesian_opt import run_bo as _run_bo
+
+    st.caption(
+        "검색 결과 상위 N개를 초기 관측값으로 삼아 GP-BO(Expected Improvement)로 tanδ를 최소화하는 조성을 탐색합니다. "
+        "한 번에 1개 조성을 제안→평가→학습하는 순차적 최적화입니다."
+    )
+
+    bo_col1, bo_col2 = st.columns(2)
+    with bo_col1:
+        bo_seed_n = st.slider(
+            "Seed compositions (top N)",
+            min_value=5, max_value=min(50, max(len(df_view), 5)),
+            value=min(20, max(len(df_view), 5)),
+            key="bo_seed_n",
+            help="현재 필터링된 결과 상위 N개를 GP 초기 학습 데이터로 사용합니다.",
+        )
+        bo_n_iter = st.slider(
+            "BO iterations",
+            min_value=5, max_value=100, value=30,
+            key="bo_n_iter",
+            help="각 iteration = GlassNet 1회 호출. 30회 기준 약 5~15초.",
+        )
+    with bo_col2:
+        st.markdown("**현재 ε_r 범위**: `[{:.2f}, {:.2f}]` 로 고정 적용".format(eps_min, eps_max))
+        st.markdown(
+            "**Seed 최소 tanδ**: `{:.6f}` ({:.2f}×quartz)".format(
+                df_view["tan_delta"].min() if len(df_view) else float("nan"),
+                df_view["tan_delta"].min() / TAN_QUARTZ if len(df_view) else float("nan"),
+            )
+        )
+        run_bo_btn = st.button("▶ Run BO Refinement", type="secondary", key="run_bo_btn")
+
+    # ── Seed composition range chart ─────────────────────────────────────────
+    # Always shown; BO best overlaid once BO has been run.
+    st.markdown("---")
+    st.markdown(f"**Seed 조성 탐색 범위** (상위 {bo_seed_n}개, 활성 산화물만 표시)")
+    st.caption("bar = min–max 범위  |  ◆ = seed 평균  |  ● = seed best (최저 tanδ)  |  ★ = BO best (실행 후 표시)")
+
+    _seed_data = df_view.head(bo_seed_n)[oxide_cols].fillna(0.0)
+    _active = [c for c in oxide_cols if (_seed_data[c] > OXIDE_THRESHOLD).any()]
+    if _active:
+        _seed_sorted = df_view.head(bo_seed_n).sort_values("tan_delta")
+        _seed_best_row = _seed_sorted.iloc[0]
+
+        _bo_best_row = None
+        if "bo_result" in st.session_state:
+            _bo_pts = st.session_state["bo_result"]
+            _bo_pts = _bo_pts[_bo_pts["source"] == "bo"]
+            if len(_bo_pts):
+                _bo_best_row = _bo_pts.sort_values("tan_delta").iloc[0]
+
+        fig_r, ax_r = plt.subplots(figsize=(9, max(len(_active) * 0.48 + 0.5, 3)))
+        for yi, ox in enumerate(_active):
+            vals = _seed_data[ox]
+            mn, mx, me = float(vals.min()), float(vals.max()), float(vals.mean())
+            sb_val = float(_seed_best_row.get(ox, 0))
+            # range bar
+            ax_r.barh(yi, mx - mn, left=mn, height=0.5, color="#AED6F1", alpha=0.85,
+                      label="seed range" if yi == 0 else "")
+            # mean marker
+            ax_r.plot(me, yi, "D", color="#2471A3", markersize=7, zorder=4,
+                      label="seed mean" if yi == 0 else "")
+            # seed best marker
+            ax_r.plot(sb_val, yi, "o", color="#117A65", markersize=9, zorder=5,
+                      label="seed best" if yi == 0 else "")
+            # BO best marker (overlaid after run)
+            if _bo_best_row is not None:
+                bo_val = float(_bo_best_row.get(ox, 0))
+                ax_r.plot(bo_val, yi, "*", color="#C0392B", markersize=15, zorder=6,
+                          label="BO best" if yi == 0 else "")
+
+        ax_r.set_yticks(range(len(_active)))
+        ax_r.set_yticklabels(_active, fontsize=10)
+        ax_r.set_xlabel("wt%")
+        ax_r.set_xlim(left=-1)
+        ax_r.set_title("Oxide composition space explored by seed")
+        ax_r.legend(loc="lower right", fontsize=9)
+        ax_r.grid(axis="x", alpha=0.3)
+        fig_r.tight_layout()
+        st.pyplot(fig_r)
+        plt.close(fig_r)
+
+    # ── Run BO ───────────────────────────────────────────────────────────────
+    if run_bo_btn:
+        seed_df_bo = df_view.head(bo_seed_n)[oxide_cols + ["eps_r", "tan_delta"]].copy()
+        progress_bar = st.progress(0.0)
+        status_txt   = st.empty()
+        bo_log: list[float] = []
+
+        def _bo_cb(i: int, total: int, best: float) -> None:
+            bo_log.append(best)
+            progress_bar.progress(i / total)
+            status_txt.caption(
+                f"Iteration {i}/{total} — best: {best:.6f} ({best/TAN_QUARTZ:.2f}×quartz)"
+            )
+
+        with st.spinner(f"GP-BO 실행 중 ({bo_n_iter}회 반복)…"):
+            bo_result = _run_bo(
+                load_predictor(),
+                oxide_cols=oxide_cols,
+                seed_df=seed_df_bo,
+                n_iter=bo_n_iter,
+                n_candidates=5_000,
+                eps_r_range=(eps_min, eps_max),
+                oxide_threshold=OXIDE_THRESHOLD,
+                rng_seed=42,
+                callback=_bo_cb,
+            )
+
+        progress_bar.progress(1.0)
+        status_txt.empty()
+        st.session_state["bo_result"] = bo_result
+        st.session_state["bo_log"]    = bo_log
+        st.rerun()  # re-render to show updated range chart with BO best overlay
+
+    # ── Persist BO results ────────────────────────────────────────────────────
+    if "bo_result" in st.session_state:
+        bo_result = st.session_state["bo_result"]
+        bo_log    = st.session_state.get("bo_log", [])
+        bo_only   = bo_result[bo_result["source"] == "bo"].copy()
+
+        seed_best_s = float(df_view.head(bo_seed_n)["tan_delta"].min()) if len(df_view) else float("nan")
+        bo_best_s   = float(bo_only["tan_delta"].min()) if len(bo_only) else seed_best_s
+        improv_pct  = (seed_best_s - bo_best_s) / seed_best_s * 100.0 if seed_best_s > 0 else 0.0
+
+        st.markdown("---")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Seed best tanδ", f"{seed_best_s:.6f}", f"{seed_best_s/TAN_QUARTZ:.2f}×")
+        m2.metric("BO best tanδ",   f"{bo_best_s:.6f}",   f"{bo_best_s/TAN_QUARTZ:.2f}×")
+        m3.metric("Improvement", f"{improv_pct:+.1f}%",
+                  delta_color="inverse" if improv_pct >= 0 else "normal")
+
+        # ── Improvement trace ─────────────────────────────────────────────────
+        if bo_log and "bo_iter" in bo_only.columns and len(bo_only):
+            st.markdown("**개선 이력** — 새로운 best를 발견한 BO iteration만 표시")
+            prev_best = float("inf")
+            new_best_iters: list[int] = []
+            for ii, v in enumerate(bo_log):
+                if v < prev_best:
+                    new_best_iters.append(ii + 1)
+                    prev_best = v
+
+            trace = bo_only[bo_only["bo_iter"].isin(new_best_iters)].copy()
+            if len(trace):
+                trace = trace.sort_values("bo_iter")
+                trace[COL_XQUARTZ] = (trace["tan_delta"] / TAN_QUARTZ).round(2)
+                trace["n_oxides"]  = (trace[oxide_cols].fillna(0) > OXIDE_THRESHOLD).sum(axis=1)
+                _tc = (["bo_iter", "eps_r", "tan_delta", COL_XQUARTZ, "n_oxides"]
+                        + [c for c in oxide_cols if c in trace.columns])
+                _tf = {"eps_r": "{:.3f}", "tan_delta": "{:.6f}", COL_XQUARTZ: "{:.2f}×",
+                        "n_oxides": "{:.0f}", **{c: "{:.1f}" for c in oxide_cols}}
+                st.dataframe(
+                    trace[_tc].style.format(_tf, na_rep="-")
+                        .background_gradient(subset=["tan_delta"], cmap="RdYlGn_r"),
+                    use_container_width=True,
+                )
+
+        # ── Convergence chart ──────────────────────────────────────────────────
+        if bo_log:
+            cummin = np.minimum.accumulate(bo_log)
+            # Mark iterations where best improved
+            prev_b = float("inf")
+            improv_iters, improv_vals = [], []
+            for ii, v in enumerate(bo_log):
+                if v < prev_b:
+                    improv_iters.append(ii + 1)
+                    improv_vals.append(v)
+                    prev_b = v
+
+            fig_c, ax_c = plt.subplots(figsize=(9, 3))
+            ax_c.plot(range(1, len(bo_log) + 1), bo_log, "o",
+                      color="#AAAAAA", markersize=4, label="iteration result")
+            ax_c.plot(range(1, len(cummin) + 1), cummin, "b-",
+                      linewidth=2, label="cumulative best")
+            ax_c.plot(improv_iters, improv_vals, "*",
+                      color="#C0392B", markersize=12, zorder=5, label="new best")
+            ax_c.axhline(TAN_QUARTZ, color="gray", linestyle="--", linewidth=1,
+                         label=f"quartz ({TAN_QUARTZ:.6f})")
+            ax_c.set_xlabel("BO iteration")
+            ax_c.set_ylabel("tanδ")
+            ax_c.set_title("GP-BO Convergence  (★ = new best found)")
+            ax_c.legend(fontsize=9)
+            ax_c.grid(alpha=0.3)
+            fig_c.tight_layout()
+            st.pyplot(fig_c)
+            plt.close(fig_c)
+
+        # ── Full BO compositions table ─────────────────────────────────────────
+        if len(bo_only):
+            bo_only[COL_XQUARTZ] = (bo_only["tan_delta"] / TAN_QUARTZ).round(2)
+            bo_only["n_oxides"]  = (bo_only[oxide_cols].fillna(0) > OXIDE_THRESHOLD).sum(axis=1)
+            st.markdown("**전체 BO 발견 조성** (tanδ 오름차순)")
+            _bc = (["eps_r", "tan_delta", COL_XQUARTZ, "n_oxides"]
+                    + (["bo_iter"] if "bo_iter" in bo_only.columns else [])
+                    + [c for c in oxide_cols if c in bo_only.columns])
+            _bf = {"eps_r": "{:.3f}", "tan_delta": "{:.6f}", COL_XQUARTZ: "{:.2f}×",
+                    "n_oxides": "{:.0f}", **{c: "{:.1f}" for c in oxide_cols}}
+            st.dataframe(
+                bo_only[_bc].sort_values("tan_delta").head(30).style
+                    .format(_bf, na_rep="-")
+                    .background_gradient(subset=["tan_delta"], cmap="RdYlGn_r")
+                    .background_gradient(subset=["eps_r"],     cmap="YlOrRd_r"),
+                use_container_width=True,
+                height=400,
+            )
