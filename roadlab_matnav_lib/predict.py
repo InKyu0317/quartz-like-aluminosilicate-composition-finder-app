@@ -22,10 +22,6 @@ from . import oxides
 
 __all__ = ["GlassPredictor"]
 
-# Streamlit Cloud free tier has ~1 GB RAM; torch alone consumes ~350 MB.
-# Chunk large batches so the GlassNet ONNX tensor never exceeds ~40 MB.
-_GLASSNET_CHUNK_SIZE = 5_000
-
 CompositionLike = Union[Mapping[str, float], pd.DataFrame, Iterable[Mapping[str, float]]]
 
 
@@ -95,7 +91,7 @@ class GlassPredictor:
         :class:`KeyError` if the column is not produced by the model.
         """
         df_in = self._compositions_to_frame(compositions)
-        df_out = self._predict_glassnet_chunked(df_in)
+        df_out = self._get_glassnet().predict(df_in)
         if prop not in df_out.columns:
             raise KeyError(
                 f"property {prop!r} is not in GlassNet output columns"
@@ -130,7 +126,7 @@ class GlassPredictor:
         from ``log10`` (same convention as :meth:`batch_dielectric_loss`).
         """
         df_in = self._compositions_to_frame(compositions)
-        df_out = self._predict_glassnet_chunked(df_in)
+        df_out = self._get_glassnet().predict(df_in)
         for col in ("Permittivity", "TangentOfLossAngle"):
             if col not in df_out.columns:
                 raise KeyError(f"property {col!r} is not in GlassNet output columns")
@@ -156,7 +152,7 @@ class GlassPredictor:
           requested.
         """
         df_in = self._compositions_to_frame(compositions)
-        df_out = self._predict_glassnet_chunked(df_in)
+        df_out = self._get_glassnet().predict(df_in)
         n = len(df_in)
         mask = np.ones(n, dtype=bool)
 
@@ -196,7 +192,7 @@ class GlassPredictor:
         NaN inputs propagate to NaN outputs without raising.
         """
         df_in = self._compositions_to_frame(compositions)
-        df_out = self._predict_glassnet_chunked(df_in)
+        df_out = self._get_glassnet().predict(df_in)
 
         needed = ["Tg", "CrystallizationOnset", "Tliquidus", "CTEbelowTg"]
         for col in needed:
@@ -219,17 +215,6 @@ class GlassPredictor:
         })
 
     # -- helpers ----------------------------------------------------------------
-
-    def _predict_glassnet_chunked(self, df_in: pd.DataFrame) -> pd.DataFrame:
-        """Run GlassNet.predict in chunks to cap peak memory on low-RAM hosts."""
-        model = self._get_glassnet()
-        if len(df_in) <= _GLASSNET_CHUNK_SIZE:
-            return model.predict(df_in)
-        chunks = [
-            model.predict(df_in.iloc[i : i + _GLASSNET_CHUNK_SIZE])
-            for i in range(0, len(df_in), _GLASSNET_CHUNK_SIZE)
-        ]
-        return pd.concat(chunks, ignore_index=True)
 
     @staticmethod
     def _compositions_to_frame(compositions: CompositionLike) -> pd.DataFrame:

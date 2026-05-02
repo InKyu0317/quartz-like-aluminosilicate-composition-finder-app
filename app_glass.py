@@ -16,7 +16,7 @@ TAN_QUARTZ      = 0.000198
 OXIDE_THRESHOLD = 1.0
 FIXED           = {'SiO2': (40.0, 85.0)}
 COL_XQUARTZ     = "×quartz"   # column key — defined once to avoid backslash in f-strings
-VITRIFY_TOP_K   = 1_000      # limit VITRIFY/thermal to top-scored rows (perf)
+VITRIFY_TOP_K   = 2_000      # limit VITRIFY/thermal to top-scored rows (perf)
 
 ALKALI_FREE_OXIDES = [
     'SiO2', 'Al2O3', 'MgO', 'CaO', 'SrO', 'BaO', 'ZnO', 'ZrO2',
@@ -43,7 +43,7 @@ with st.sidebar:
         "Max oxide count", min_value=2, max_value=len(active_oxides), value=len(active_oxides)
     )
     n_samples = st.select_slider(
-        "Sample count", options=[5_000, 10_000, 20_000, 30_000], value=10_000
+        "Sample count", options=[10_000, 30_000, 50_000, 100_000], value=50_000
     )
     top_n = st.slider("Rows to display", min_value=10, max_value=200, value=30)
     p_glass_min = st.slider(
