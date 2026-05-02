@@ -2,5 +2,6 @@
 torch>=2.0
 numpy>=1.24
 pandas>=2.0
+matplotlib>=3.7
 glasspy>=0.6
 streamlit>=1.35
