@@ -126,6 +126,25 @@ def sample_simplex(
     return pd.DataFrame(arr, columns=list(active_oxides))
 
 
+def _apply_threshold(df_wt: pd.DataFrame, threshold: float) -> pd.DataFrame:
+    """Zero out oxide values below ``threshold`` wt% and renormalize each row
+    to 100 wt%.
+
+    Dirichlet sampling always assigns small non-zero values to every oxide.
+    Applying a threshold before model calls ensures predictions are made on
+    compositions where minor-trace oxides are truly absent, not just small.
+    Rows where all values fall below the threshold are dropped.
+    """
+    if threshold <= 0.0:
+        return df_wt
+    cleaned = df_wt.where(df_wt >= threshold, 0.0)
+    row_sums = cleaned.sum(axis=1)
+    valid = row_sums > 0
+    cleaned = cleaned.loc[valid]
+    row_sums = row_sums.loc[valid]
+    return cleaned.div(row_sums, axis=0).mul(100.0).reset_index(drop=True)
+
+
 def recommend(
     predictor,
     active_oxides: Sequence[str],
@@ -138,6 +157,7 @@ def recommend(
     extra_props: Iterable[str] = (),
     max_attempts_factor: int = 50,
     score_weights: "tuple[float, float]" = (0.0, 1.0),
+    oxide_threshold: float = 0.0,
 ) -> pd.DataFrame:
     """Sample compositions on the ``active_oxides`` simplex, predict ε_r and
     tan δ, filter by the requested ranges, then sort by a combined closeness
@@ -175,6 +195,11 @@ def recommend(
         fixed=fixed, seed=seed,
         max_attempts_factor=max_attempts_factor,
     )
+    # Zero out trace oxides below threshold and renormalize BEFORE any model
+    # call so predictions reflect the actual intended composition, not Dirichlet
+    # noise. e.g. a 3-component composition has exactly 3 non-zero oxides.
+    if oxide_threshold > 0.0:
+        samples_wt = _apply_threshold(samples_wt, oxide_threshold)
     samples_mol = wt_to_mol_frame(samples_wt)
 
     # Single GlassNet call for both properties (2× faster than separate calls).

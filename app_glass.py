@@ -25,8 +25,8 @@ ALKALI_FREE_OXIDES = [
 WITH_ALKALI_OXIDES = ALKALI_FREE_OXIDES + ['Na2O', 'K2O', 'Li2O']
 
 # ── page config ───────────────────────────────────────────────────────────────
-st.set_page_config(page_title="Glass Composition Finder", layout="wide")
-st.title("Glass Composition Finder")
+st.set_page_config(page_title="Quartz-like Aluminosilicate Composition Finder", layout="wide")
+st.title("Quartz-like Aluminosilicate Composition Finder")
 st.caption(f"GlassNet · quartz reference: tan\u03b4 = {TAN_QUARTZ:.6f}, \u03b5_r = 3.77")
 
 # ── sidebar controls ──────────────────────────────────────────────────────────
@@ -52,6 +52,10 @@ with st.sidebar:
     )
     run = st.button("Run Search", type="primary")
 
+    st.divider()
+    st.caption(f"**Oxide pool** ({len(active_oxides)} oxides)")
+    st.caption("  ".join(f"`{ox}`" for ox in active_oxides))
+
 # ── model (cached) ────────────────────────────────────────────────────────────
 @st.cache_resource(show_spinner="GlassNet / VITRIFY 모델 로딩 중…")
 def load_predictor():
@@ -73,6 +77,7 @@ def run_search(oxide_tuple, eps_min, eps_max, n_samples, seed=0):
         fixed=FIXED,
         seed=seed,
         max_attempts_factor=1000,
+        oxide_threshold=OXIDE_THRESHOLD,
     )
 
     oxide_cols = [c for c in oxides if c in df.columns]
@@ -156,9 +161,12 @@ format_dict = {
 }
 st.dataframe(
     df_display.style.format(format_dict, na_rep="-")
-     .background_gradient(subset=["score"], cmap="RdYlGn")
+     .background_gradient(subset=["score"],     cmap="RdYlGn")
      .background_gradient(subset=["tan_delta"], cmap="RdYlGn_r")
-     .background_gradient(subset=["P(glass)"], cmap="Blues"),
+     .background_gradient(subset=["P(glass)"],  cmap="Blues")
+     .background_gradient(subset=["eps_r"],     cmap="YlOrRd_r")
+     .background_gradient(subset=["\u00d7quartz"], cmap="RdYlGn_r")
+     .background_gradient(subset=["n_oxides"],  cmap="Purples"),
     use_container_width=True,
     height=600,
 )
