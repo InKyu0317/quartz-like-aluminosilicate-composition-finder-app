@@ -177,8 +177,10 @@ def recommend(
     )
     samples_mol = wt_to_mol_frame(samples_wt)
 
-    eps = np.asarray(predictor.batch_dielectric_constant(samples_mol), dtype=float)
-    tan = np.asarray(predictor.batch_dielectric_loss(samples_mol), dtype=float)
+    # Single GlassNet call for both properties (2× faster than separate calls).
+    eps, tan = predictor.batch_eps_tan(samples_mol)
+    eps = np.asarray(eps, dtype=float)
+    tan = np.asarray(tan, dtype=float)
     # Build the filter mask directly from already-computed arrays — avoids
     # extra GlassNet.predict() calls that batch_in_range() would trigger.
     mask = np.ones(len(samples_mol), dtype=bool)

@@ -45,6 +45,15 @@ class GlassPredictor:
             self._vitrify = VITRIFY(model=self._vitrify_model)
         return self._vitrify
 
+    def warm_up(self) -> None:
+        """Eagerly load both ONNX models.
+
+        Call once at app startup (e.g. inside a ``@st.cache_resource`` function)
+        so that the first real search does not pay the ~100 s VITRIFY load cost.
+        """
+        self._get_glassnet()
+        self._get_vitrify()
+
     # -- single-composition API -------------------------------------------------
 
     def tg(self, composition: Mapping[str, float]) -> float:
@@ -103,6 +112,29 @@ class GlassPredictor:
         raw = self.batch_property(compositions, "TangentOfLossAngle")
         return np.power(10.0, raw, where=np.isfinite(raw),
                         out=np.full_like(raw, np.nan, dtype=float))
+
+    def batch_eps_tan(
+        self, compositions: CompositionLike
+    ) -> "tuple[np.ndarray, np.ndarray]":
+        """Predict ε_r and tan δ in a **single** GlassNet call.
+
+        Prefer this over calling :meth:`batch_dielectric_constant` and
+        :meth:`batch_dielectric_loss` separately — one model inference
+        instead of two (~2× speedup on large batches).
+
+        Returns ``(eps_r, tan_delta)`` where ``tan_delta`` is already decoded
+        from ``log10`` (same convention as :meth:`batch_dielectric_loss`).
+        """
+        df_in = self._compositions_to_frame(compositions)
+        df_out = self._get_glassnet().predict(df_in)
+        for col in ("Permittivity", "TangentOfLossAngle"):
+            if col not in df_out.columns:
+                raise KeyError(f"property {col!r} is not in GlassNet output columns")
+        eps = df_out["Permittivity"].to_numpy(dtype=float)
+        raw_tan = df_out["TangentOfLossAngle"].to_numpy(dtype=float)
+        tan = np.power(10.0, raw_tan, where=np.isfinite(raw_tan),
+                       out=np.full_like(raw_tan, np.nan, dtype=float))
+        return eps, tan
 
     def batch_in_range(
         self,

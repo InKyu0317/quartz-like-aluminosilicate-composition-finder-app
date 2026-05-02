@@ -14,7 +14,9 @@ import roadlab_matnav_lib as rml
 # ── constants ────────────────────────────────────────────────────────────────
 TAN_QUARTZ      = 0.000198
 OXIDE_THRESHOLD = 1.0
-FIXED = {'SiO2': (40.0, 85.0)}
+FIXED           = {'SiO2': (40.0, 85.0)}
+COL_XQUARTZ     = "×quartz"   # column key — defined once to avoid backslash in f-strings
+VITRIFY_TOP_K   = 2_000      # limit VITRIFY/thermal to top-scored rows (perf)
 
 ALKALI_FREE_OXIDES = [
     'SiO2', 'Al2O3', 'MgO', 'CaO', 'SrO', 'BaO', 'ZnO', 'ZrO2',
@@ -51,9 +53,11 @@ with st.sidebar:
     run = st.button("Run Search", type="primary")
 
 # ── model (cached) ────────────────────────────────────────────────────────────
-@st.cache_resource(show_spinner="GlassNet \ubaa8\ub378 \ub85c\ub529 \uc911\u2026")
+@st.cache_resource(show_spinner="GlassNet / VITRIFY 모델 로딩 중…")
 def load_predictor():
-    return GlassPredictor()
+    predictor = GlassPredictor()
+    predictor.warm_up()   # load both ONNX models now (once), not on first search
+    return predictor
 
 # ── search (cached by params) ─────────────────────────────────────────────────
 @st.cache_data(show_spinner="\uc870\uc131 \uc0d8\ud50c\ub9c1 \uc911\u2026", max_entries=8)
@@ -76,7 +80,12 @@ def run_search(oxide_tuple, eps_min, eps_max, n_samples, seed=0):
     df["n_oxides"] = (df[oxide_cols] > OXIDE_THRESHOLD).sum(axis=1).astype(int)
     df["\u00d7quartz"] = (df["tan_delta"] / TAN_QUARTZ).round(2)
 
-    # ── VITRIFY + thermal properties (on kept rows only) ──────────────────────
+    # Sort first so VITRIFY/thermal run only on the best-scoring rows
+    df = df.sort_values(["score", "n_oxides"], ascending=[False, True]).reset_index(drop=True)
+    n_total = len(df)   # candidates before VITRIFY trim (for metrics display)
+    df = df.head(VITRIFY_TOP_K)
+
+    # ── VITRIFY + thermal properties (top rows only) ─────────────────────────────
     mol_df = wt_to_mol_frame(df[oxide_cols].fillna(0.0))
     df["p_glass"] = predictor.batch_glass_probability(mol_df)
     thermal = predictor.batch_thermal(mol_df)
@@ -86,15 +95,15 @@ def run_search(oxide_tuple, eps_min, eps_max, n_samples, seed=0):
     df["CTE_1e6"] = thermal["CTE_per_K"].to_numpy() * 1e6
     df["dT_K"]    = thermal["delta_T"].to_numpy()
 
-    df = df.sort_values(["score", "n_oxides"], ascending=[False, True]).reset_index(drop=True)
     df.index += 1  # 1-based rank
-    return df, oxide_cols
+    return df, oxide_cols, n_total
 
 # ── run only when button clicked ──────────────────────────────────────────────
 if run:
-    df, oxide_cols = run_search(tuple(active_oxides), eps_min, eps_max, n_samples)
+    df, oxide_cols, n_total = run_search(tuple(active_oxides), eps_min, eps_max, n_samples)
     st.session_state["df"] = df
     st.session_state["oxide_cols"] = oxide_cols
+    st.session_state["n_total"] = n_total
 
 if "df" not in st.session_state:
     st.info("\uc67c\ucabd \uc0ac\uc774\ub4dc\ubc14\uc5d0\uc11c \ud30c\ub77c\ubbf8\ud130\ub97c \uc124\uc815\ud558\uace0 **Run Search** \ub97c \ub204\ub974\uc138\uc694.")
@@ -111,11 +120,11 @@ df_view = df[
 
 # ── metrics row ───────────────────────────────────────────────────────────────
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total candidates", f"{len(df):,}")
+col1.metric("Total candidates", f"{st.session_state.get('n_total', len(df)):,}")
 col2.metric("Shown (after filter)", f"{len(df_view):,}")
 best = df_view.iloc[0] if len(df_view) else df.iloc[0]
 col3.metric("Best \u03b5_r", f"{best['eps_r']:.3f}")
-col4.metric("Best tan\u03b4 / quartz", f"{best['\u00d7quartz']:.2f}\u00d7")
+col4.metric("Best tan\u03b4 / quartz", f"{best[COL_XQUARTZ]:.2f}\u00d7")
 
 # ── table ─────────────────────────────────────────────────────────────────────
 COL_RENAME = {
@@ -164,7 +173,7 @@ if rank <= len(df_view):
     c1, c2 = st.columns(2)
     with c1:
         st.write(f"**\u03b5_r** = {row['eps_r']:.4f}")
-        st.write(f"**tan\u03b4** = {row['tan_delta']:.6f}  ({row[chr(215)+'quartz']:.2f}\u00d7 quartz)")
+        st.write(f"**tan\u03b4** = {row['tan_delta']:.6f}  ({row[COL_XQUARTZ]:.2f}\u00d7 quartz)")
         st.write(f"**n_oxides** = {int(row['n_oxides'])}")
         st.divider()
         st.write(f"**P(glass)** = {row['p_glass']:.2f}")
