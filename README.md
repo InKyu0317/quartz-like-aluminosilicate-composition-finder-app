@@ -1,3 +1,13 @@
+---
+title: Quartz-like Aluminosilicate Composition Finder
+emoji: 🧪
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Glass Composition Finder
 
 GlassNet 기반 유리 조성 탐색 Streamlit 앱.
