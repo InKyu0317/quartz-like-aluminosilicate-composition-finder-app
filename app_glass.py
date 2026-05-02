@@ -203,7 +203,7 @@ st.dataframe(
      .background_gradient(subset=["eps_r"],     cmap="YlOrRd_r")
      .background_gradient(subset=["\u00d7quartz"], cmap="RdYlGn_r")
      .background_gradient(subset=["n_oxides"],  cmap="Purples"),
-    use_container_width=True,
+    width="stretch",
     height=600,
 )
 
@@ -228,7 +228,7 @@ if rank <= len(df_view):
     with c2:
         st.write("**Composition (wt%)**")
         comp_df = pd.DataFrame(present.items(), columns=["Oxide", "wt%"]).set_index("Oxide")
-        st.dataframe(comp_df.style.format({"wt%": "{:.1f}"}), use_container_width=True)
+        st.dataframe(comp_df.style.format({"wt%": "{:.1f}"}), width="stretch")
         st.bar_chart(comp_df)
 
 # ── Bayesian Optimization Refinement ─────────────────────────────────────────
@@ -391,7 +391,7 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
                 st.dataframe(
                     trace[_tc].style.format(_tf, na_rep="-")
                         .background_gradient(subset=["tan_delta"], cmap="RdYlGn_r"),
-                    use_container_width=True,
+                    width="stretch",
                 )
 
         # ── Convergence chart ──────────────────────────────────────────────────
@@ -439,6 +439,6 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
                     .format(_bf, na_rep="-")
                     .background_gradient(subset=["tan_delta"], cmap="RdYlGn_r")
                     .background_gradient(subset=["eps_r"],     cmap="YlOrRd_r"),
-                use_container_width=True,
+                width="stretch",
                 height=400,
             )
