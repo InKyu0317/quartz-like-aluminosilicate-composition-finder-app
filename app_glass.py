@@ -182,29 +182,25 @@ display_cols = (
     + [c for c in oxide_cols if c in df_view.columns]
 )
 df_display = df_view[display_cols].rename(columns=COL_RENAME)
-format_dict = {
-    "eps_r":                     "{:.3f}",
-    "tan_delta":                 "{:.6f}",
-    "\u00d7quartz":              "{:.2f}\u00d7",
-    "score":                     "{:.4f}",
-    "P(glass)":                  "{:.2f}",
-    "Tg (°C)":                   "{:.0f}",
-    "Tx (°C)":                   "{:.0f}",
-    "Tliq (°C)":                 "{:.0f}",
-    "CTE (\u00d710\u207b\u2076/\u00b0C)": "{:.2f}",
-    "\u0394T (\u00b0C)":               "{:.0f}",
-    **{c: "{:.1f}" for c in oxide_cols},
+_col_cfg = {
+    "eps_r":                               st.column_config.NumberColumn("ε_r",  format="%.3f"),
+    "tan_delta":                           st.column_config.NumberColumn("tanδ", format="%.6f"),
+    "\u00d7quartz":                        st.column_config.NumberColumn(format="%.2f\u00d7"),
+    "score":                               st.column_config.NumberColumn(format="%.4f"),
+    "n_oxides":                            st.column_config.NumberColumn("#oxides"),
+    "P(glass)":                            st.column_config.ProgressColumn(format="%.2f", min_value=0.0, max_value=1.0),
+    "Tg (\u00b0C)":                        st.column_config.NumberColumn(format="%.0f"),
+    "Tx (\u00b0C)":                        st.column_config.NumberColumn(format="%.0f"),
+    "Tliq (\u00b0C)":                      st.column_config.NumberColumn(format="%.0f"),
+    "CTE (\u00d710\u207b\u2076/\u00b0C)": st.column_config.NumberColumn(format="%.2f"),
+    "\u0394T (\u00b0C)":                   st.column_config.NumberColumn(format="%.0f"),
+    **{c: st.column_config.NumberColumn(format="%.1f") for c in oxide_cols},
 }
 st.dataframe(
-    df_display.style.format(format_dict, na_rep="-")
-     .background_gradient(subset=["score"],     cmap="RdYlGn")
-     .background_gradient(subset=["tan_delta"], cmap="RdYlGn_r")
-     .background_gradient(subset=["P(glass)"],  cmap="Blues")
-     .background_gradient(subset=["eps_r"],     cmap="YlOrRd_r")
-     .background_gradient(subset=["\u00d7quartz"], cmap="RdYlGn_r")
-     .background_gradient(subset=["n_oxides"],  cmap="Purples"),
+    df_display,
     width="stretch",
     height=600,
+    column_config=_col_cfg,
 )
 
 # ── detail for selected row ───────────────────────────────────────────────────
