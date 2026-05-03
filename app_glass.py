@@ -182,22 +182,34 @@ display_cols = (
     + [c for c in oxide_cols if c in df_view.columns]
 )
 df_display = df_view[display_cols].rename(columns=COL_RENAME)
+# Explicit per-column widths prevent AG Grid auto-resize jitter on slow links (e.g. HF Spaces).
 _col_cfg = {
-    "eps_r":                               st.column_config.NumberColumn("ε_r",  format="%.3f"),
-    "tan_delta":                           st.column_config.NumberColumn("tanδ", format="%.6f"),
-    "\u00d7quartz":                        st.column_config.NumberColumn(format="%.2f\u00d7"),
-    "score":                               st.column_config.NumberColumn(format="%.4f"),
-    "n_oxides":                            st.column_config.NumberColumn("#oxides"),
-    "P(glass)":                            st.column_config.NumberColumn(format="%.2f"),
-    "Tg (\u00b0C)":                        st.column_config.NumberColumn(format="%.0f"),
-    "Tx (\u00b0C)":                        st.column_config.NumberColumn(format="%.0f"),
-    "Tliq (\u00b0C)":                      st.column_config.NumberColumn(format="%.0f"),
-    "CTE (\u00d710\u207b\u2076/\u00b0C)": st.column_config.NumberColumn(format="%.2f"),
-    "\u0394T (\u00b0C)":                   st.column_config.NumberColumn(format="%.0f"),
-    **{c: st.column_config.NumberColumn(format="%.1f") for c in oxide_cols},
+    "eps_r":                               st.column_config.NumberColumn("ε_r",  format="%.3f", width="small"),
+    "tan_delta":                           st.column_config.NumberColumn("tanδ", format="%.6f", width="small"),
+    "\u00d7quartz":                        st.column_config.NumberColumn(format="%.2f\u00d7", width="small"),
+    "score":                               st.column_config.NumberColumn(format="%.4f", width="small"),
+    "n_oxides":                            st.column_config.NumberColumn("#ox", width="small"),
+    "P(glass)":                            st.column_config.NumberColumn(format="%.2f", width="small"),
+    "Tg (\u00b0C)":                        st.column_config.NumberColumn(format="%.0f", width="small"),
+    "Tx (\u00b0C)":                        st.column_config.NumberColumn(format="%.0f", width="small"),
+    "Tliq (\u00b0C)":                      st.column_config.NumberColumn(format="%.0f", width="small"),
+    "CTE (\u00d710\u207b\u2076/\u00b0C)": st.column_config.NumberColumn(format="%.2f", width="small"),
+    "\u0394T (\u00b0C)":                   st.column_config.NumberColumn(format="%.0f", width="small"),
+    **{c: st.column_config.NumberColumn(format="%.1f", width="small") for c in oxide_cols},
 }
+# Styler adds cell background colors. Fixed column widths above prevent jitter
+# even though Styler streams in CSS asynchronously.
+_styled = (
+    df_display.style
+        .background_gradient(subset=["score"],         cmap="RdYlGn")
+        .background_gradient(subset=["tan_delta"],     cmap="RdYlGn_r")
+        .background_gradient(subset=["P(glass)"],      cmap="Blues")
+        .background_gradient(subset=["eps_r"],         cmap="YlOrRd_r")
+        .background_gradient(subset=["\u00d7quartz"],  cmap="RdYlGn_r")
+        .background_gradient(subset=["n_oxides"],      cmap="Purples")
+)
 st.dataframe(
-    df_display,
+    _styled,
     width="stretch",
     height=600,
     column_config=_col_cfg,
@@ -411,18 +423,26 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
                         + _prop_cols
                         + [c for c in oxide_cols if c in trace.columns])
                 _col_cfg_t = {
-                    "eps_r":    st.column_config.NumberColumn("ε_r",   format="%.3f"),
-                    "tan_delta": st.column_config.NumberColumn("tanδ",  format="%.6f"),
-                    COL_XQUARTZ: st.column_config.NumberColumn(format="%.2f×"),
-                    "p_glass":  st.column_config.NumberColumn("P(glass)", format="%.2f"),
-                    "Tg_K":     st.column_config.NumberColumn("Tg (°C)",   format="%.0f"),
-                    "Tx_K":     st.column_config.NumberColumn("Tx (°C)",   format="%.0f"),
-                    "Tliq_K":   st.column_config.NumberColumn("Tliq (°C)", format="%.0f"),
-                    "CTE_1e6":  st.column_config.NumberColumn("CTE (×10⁻⁶/°C)", format="%.2f"),
-                    "dT_K":     st.column_config.NumberColumn("ΔT (°C)",   format="%.0f"),
-                    **{c: st.column_config.NumberColumn(format="%.1f") for c in oxide_cols},
+                    "eps_r":    st.column_config.NumberColumn("ε_r",   format="%.3f", width="small"),
+                    "tan_delta": st.column_config.NumberColumn("tanδ",  format="%.6f", width="small"),
+                    COL_XQUARTZ: st.column_config.NumberColumn(format="%.2f×", width="small"),
+                    "bo_iter":  st.column_config.NumberColumn("iter", width="small"),
+                    "n_oxides": st.column_config.NumberColumn("#ox", width="small"),
+                    "p_glass":  st.column_config.NumberColumn("P(glass)", format="%.2f", width="small"),
+                    "Tg_K":     st.column_config.NumberColumn("Tg (°C)",   format="%.0f", width="small"),
+                    "Tx_K":     st.column_config.NumberColumn("Tx (°C)",   format="%.0f", width="small"),
+                    "Tliq_K":   st.column_config.NumberColumn("Tliq (°C)", format="%.0f", width="small"),
+                    "CTE_1e6":  st.column_config.NumberColumn("CTE (×10⁻⁶/°C)", format="%.2f", width="small"),
+                    "dT_K":     st.column_config.NumberColumn("ΔT (°C)",   format="%.0f", width="small"),
+                    **{c: st.column_config.NumberColumn(format="%.1f", width="small") for c in oxide_cols},
                 }
-                st.dataframe(trace[_tc], column_config=_col_cfg_t, width="stretch")
+                _styled_t = (
+                    trace[_tc].style
+                        .background_gradient(subset=["tan_delta"], cmap="RdYlGn_r")
+                )
+                if "p_glass" in trace.columns:
+                    _styled_t = _styled_t.background_gradient(subset=["p_glass"], cmap="Blues")
+                st.dataframe(_styled_t, column_config=_col_cfg_t, width="stretch")
 
         # ── Convergence chart ──────────────────────────────────────────────────
         if bo_log:
@@ -465,19 +485,29 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
                     + _prop_cols_b
                     + [c for c in oxide_cols if c in bo_only.columns])
             _col_cfg_b = {
-                "eps_r":    st.column_config.NumberColumn("ε_r",   format="%.3f"),
-                "tan_delta": st.column_config.NumberColumn("tanδ",  format="%.6f"),
-                COL_XQUARTZ: st.column_config.NumberColumn(format="%.2f×"),
-                "p_glass":  st.column_config.NumberColumn("P(glass)", format="%.2f"),
-                "Tg_K":     st.column_config.NumberColumn("Tg (°C)",   format="%.0f"),
-                "Tx_K":     st.column_config.NumberColumn("Tx (°C)",   format="%.0f"),
-                "Tliq_K":   st.column_config.NumberColumn("Tliq (°C)", format="%.0f"),
-                "CTE_1e6":  st.column_config.NumberColumn("CTE (×10⁻⁶/°C)", format="%.2f"),
-                "dT_K":     st.column_config.NumberColumn("ΔT (°C)",   format="%.0f"),
-                **{c: st.column_config.NumberColumn(format="%.1f") for c in oxide_cols},
+                "eps_r":    st.column_config.NumberColumn("ε_r",   format="%.3f", width="small"),
+                "tan_delta": st.column_config.NumberColumn("tanδ",  format="%.6f", width="small"),
+                COL_XQUARTZ: st.column_config.NumberColumn(format="%.2f×", width="small"),
+                "bo_iter":  st.column_config.NumberColumn("iter", width="small"),
+                "n_oxides": st.column_config.NumberColumn("#ox", width="small"),
+                "p_glass":  st.column_config.NumberColumn("P(glass)", format="%.2f", width="small"),
+                "Tg_K":     st.column_config.NumberColumn("Tg (°C)",   format="%.0f", width="small"),
+                "Tx_K":     st.column_config.NumberColumn("Tx (°C)",   format="%.0f", width="small"),
+                "Tliq_K":   st.column_config.NumberColumn("Tliq (°C)", format="%.0f", width="small"),
+                "CTE_1e6":  st.column_config.NumberColumn("CTE (×10⁻⁶/°C)", format="%.2f", width="small"),
+                "dT_K":     st.column_config.NumberColumn("ΔT (°C)",   format="%.0f", width="small"),
+                **{c: st.column_config.NumberColumn(format="%.1f", width="small") for c in oxide_cols},
             }
+            _bo_top = bo_only[_bc].sort_values("tan_delta").head(30)
+            _styled_b = (
+                _bo_top.style
+                    .background_gradient(subset=["tan_delta"], cmap="RdYlGn_r")
+                    .background_gradient(subset=["eps_r"],     cmap="YlOrRd_r")
+            )
+            if "p_glass" in _bo_top.columns:
+                _styled_b = _styled_b.background_gradient(subset=["p_glass"], cmap="Blues")
             st.dataframe(
-                bo_only[_bc].sort_values("tan_delta").head(30),
+                _styled_b,
                 column_config=_col_cfg_b,
                 width="stretch",
                 height=400,
