@@ -26,12 +26,15 @@ WITH_ALKALI_OXIDES = ALKALI_FREE_OXIDES + ['Na2O', 'K2O', 'Li2O']
 
 # ── page config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Quartz-like Aluminosilicate Composition Finder", layout="wide")
-# Force vertical scrollbar always-visible to prevent layout-jitter feedback loop
-# (when content height oscillates around viewport height, scrollbar toggles on/off,
-#  changing available width by ~10px and causing tables to shake. Pinning the
-#  scrollbar removes the toggle.)
+# Force vertical scrollbar always-visible on the main Streamlit section to prevent
+# layout-jitter feedback loop. The culprit is section[data-testid="stMain"] which
+# has overflow-y:auto — when content height oscillates around the visible area height,
+# its scrollbar toggles on/off, stealing/returning ~10px width and causing all tables
+# and metric blocks to shake. Forcing overflow-y:scroll pins the scrollbar permanently.
 st.markdown(
-    "<style>html { overflow-y: scroll !important; }</style>",
+    "<style>"
+    "section[data-testid='stMain'] { overflow-y: scroll !important; }"
+    "</style>",
     unsafe_allow_html=True,
 )
 st.title("Quartz-like Aluminosilicate Composition Finder")
