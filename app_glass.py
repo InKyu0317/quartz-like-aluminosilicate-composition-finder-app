@@ -188,7 +188,7 @@ _col_cfg = {
     "\u00d7quartz":                        st.column_config.NumberColumn(format="%.2f\u00d7"),
     "score":                               st.column_config.NumberColumn(format="%.4f"),
     "n_oxides":                            st.column_config.NumberColumn("#oxides"),
-    "P(glass)":                            st.column_config.ProgressColumn(format="%.2f", min_value=0.0, max_value=1.0),
+    "P(glass)":                            st.column_config.NumberColumn(format="%.2f"),
     "Tg (\u00b0C)":                        st.column_config.NumberColumn(format="%.0f"),
     "Tx (\u00b0C)":                        st.column_config.NumberColumn(format="%.0f"),
     "Tliq (\u00b0C)":                      st.column_config.NumberColumn(format="%.0f"),
@@ -224,7 +224,7 @@ if rank <= len(df_view):
     with c2:
         st.write("**Composition (wt%)**")
         comp_df = pd.DataFrame(present.items(), columns=["Oxide", "wt%"]).set_index("Oxide")
-        st.dataframe(comp_df.style.format({"wt%": "{:.1f}"}), width="stretch")
+        st.dataframe(comp_df, column_config={"wt%": st.column_config.NumberColumn(format="%.1f")}, width="stretch")
         if present:
             import matplotlib
             matplotlib.use("Agg")
@@ -414,7 +414,7 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
                     "eps_r":    st.column_config.NumberColumn("ε_r",   format="%.3f"),
                     "tan_delta": st.column_config.NumberColumn("tanδ",  format="%.6f"),
                     COL_XQUARTZ: st.column_config.NumberColumn(format="%.2f×"),
-                    "p_glass":  st.column_config.ProgressColumn("P(glass)", format="%.2f", min_value=0.0, max_value=1.0),
+                    "p_glass":  st.column_config.NumberColumn("P(glass)", format="%.2f"),
                     "Tg_K":     st.column_config.NumberColumn("Tg (°C)",   format="%.0f"),
                     "Tx_K":     st.column_config.NumberColumn("Tx (°C)",   format="%.0f"),
                     "Tliq_K":   st.column_config.NumberColumn("Tliq (°C)", format="%.0f"),
@@ -468,7 +468,7 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
                 "eps_r":    st.column_config.NumberColumn("ε_r",   format="%.3f"),
                 "tan_delta": st.column_config.NumberColumn("tanδ",  format="%.6f"),
                 COL_XQUARTZ: st.column_config.NumberColumn(format="%.2f×"),
-                "p_glass":  st.column_config.ProgressColumn("P(glass)", format="%.2f", min_value=0.0, max_value=1.0),
+                "p_glass":  st.column_config.NumberColumn("P(glass)", format="%.2f"),
                 "Tg_K":     st.column_config.NumberColumn("Tg (°C)",   format="%.0f"),
                 "Tx_K":     st.column_config.NumberColumn("Tx (°C)",   format="%.0f"),
                 "Tliq_K":   st.column_config.NumberColumn("Tliq (°C)", format="%.0f"),
