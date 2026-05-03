@@ -357,6 +357,19 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
 
         progress_bar.progress(1.0)
         status_txt.empty()
+
+        # ── Augment BO result with P(glass) + thermal properties ──────────────
+        with st.spinner("VITRIFY / thermal 예측 중…"):
+            _pred = load_predictor()
+            _mol  = wt_to_mol_frame(bo_result[oxide_cols].fillna(0.0))
+            bo_result["p_glass"] = _pred.batch_glass_probability(_mol)
+            _th = _pred.batch_thermal(_mol)
+            bo_result["Tg_K"]   = _th["Tg"].to_numpy() - 273.15
+            bo_result["Tx_K"]   = _th["Tx"].to_numpy() - 273.15
+            bo_result["Tliq_K"] = _th["Tliquidus"].to_numpy() - 273.15
+            bo_result["CTE_1e6"] = _th["CTE_per_K"].to_numpy() * 1e6
+            bo_result["dT_K"]   = _th["delta_T"].to_numpy()
+
         st.session_state["bo_result"] = bo_result
         st.session_state["bo_log"]    = bo_log
         st.rerun()  # re-render to show updated range chart with BO best overlay
@@ -393,15 +406,23 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
                 trace = trace.sort_values("bo_iter")
                 trace[COL_XQUARTZ] = (trace["tan_delta"] / TAN_QUARTZ).round(2)
                 trace["n_oxides"]  = (trace[oxide_cols].fillna(0) > OXIDE_THRESHOLD).sum(axis=1)
+                _prop_cols = [c for c in ["p_glass", "Tg_K", "Tx_K", "Tliq_K", "CTE_1e6", "dT_K"] if c in trace.columns]
                 _tc = (["bo_iter", "eps_r", "tan_delta", COL_XQUARTZ, "n_oxides"]
+                        + _prop_cols
                         + [c for c in oxide_cols if c in trace.columns])
-                _tf = {"eps_r": "{:.3f}", "tan_delta": "{:.6f}", COL_XQUARTZ: "{:.2f}×",
-                        "n_oxides": "{:.0f}", **{c: "{:.1f}" for c in oxide_cols}}
-                st.dataframe(
-                    trace[_tc].style.format(_tf, na_rep="-")
-                        .background_gradient(subset=["tan_delta"], cmap="RdYlGn_r"),
-                    width="stretch",
-                )
+                _col_cfg_t = {
+                    "eps_r":    st.column_config.NumberColumn("ε_r",   format="%.3f"),
+                    "tan_delta": st.column_config.NumberColumn("tanδ",  format="%.6f"),
+                    COL_XQUARTZ: st.column_config.NumberColumn(format="%.2f×"),
+                    "p_glass":  st.column_config.ProgressColumn("P(glass)", format="%.2f", min_value=0.0, max_value=1.0),
+                    "Tg_K":     st.column_config.NumberColumn("Tg (°C)",   format="%.0f"),
+                    "Tx_K":     st.column_config.NumberColumn("Tx (°C)",   format="%.0f"),
+                    "Tliq_K":   st.column_config.NumberColumn("Tliq (°C)", format="%.0f"),
+                    "CTE_1e6":  st.column_config.NumberColumn("CTE (×10⁻⁶/°C)", format="%.2f"),
+                    "dT_K":     st.column_config.NumberColumn("ΔT (°C)",   format="%.0f"),
+                    **{c: st.column_config.NumberColumn(format="%.1f") for c in oxide_cols},
+                }
+                st.dataframe(trace[_tc], column_config=_col_cfg_t, width="stretch")
 
         # ── Convergence chart ──────────────────────────────────────────────────
         if bo_log:
@@ -438,16 +459,26 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
             bo_only[COL_XQUARTZ] = (bo_only["tan_delta"] / TAN_QUARTZ).round(2)
             bo_only["n_oxides"]  = (bo_only[oxide_cols].fillna(0) > OXIDE_THRESHOLD).sum(axis=1)
             st.markdown("**전체 BO 발견 조성** (tanδ 오름차순)")
+            _prop_cols_b = [c for c in ["p_glass", "Tg_K", "Tx_K", "Tliq_K", "CTE_1e6", "dT_K"] if c in bo_only.columns]
             _bc = (["eps_r", "tan_delta", COL_XQUARTZ, "n_oxides"]
                     + (["bo_iter"] if "bo_iter" in bo_only.columns else [])
+                    + _prop_cols_b
                     + [c for c in oxide_cols if c in bo_only.columns])
-            _bf = {"eps_r": "{:.3f}", "tan_delta": "{:.6f}", COL_XQUARTZ: "{:.2f}×",
-                    "n_oxides": "{:.0f}", **{c: "{:.1f}" for c in oxide_cols}}
+            _col_cfg_b = {
+                "eps_r":    st.column_config.NumberColumn("ε_r",   format="%.3f"),
+                "tan_delta": st.column_config.NumberColumn("tanδ",  format="%.6f"),
+                COL_XQUARTZ: st.column_config.NumberColumn(format="%.2f×"),
+                "p_glass":  st.column_config.ProgressColumn("P(glass)", format="%.2f", min_value=0.0, max_value=1.0),
+                "Tg_K":     st.column_config.NumberColumn("Tg (°C)",   format="%.0f"),
+                "Tx_K":     st.column_config.NumberColumn("Tx (°C)",   format="%.0f"),
+                "Tliq_K":   st.column_config.NumberColumn("Tliq (°C)", format="%.0f"),
+                "CTE_1e6":  st.column_config.NumberColumn("CTE (×10⁻⁶/°C)", format="%.2f"),
+                "dT_K":     st.column_config.NumberColumn("ΔT (°C)",   format="%.0f"),
+                **{c: st.column_config.NumberColumn(format="%.1f") for c in oxide_cols},
+            }
             st.dataframe(
-                bo_only[_bc].sort_values("tan_delta").head(30).style
-                    .format(_bf, na_rep="-")
-                    .background_gradient(subset=["tan_delta"], cmap="RdYlGn_r")
-                    .background_gradient(subset=["eps_r"],     cmap="YlOrRd_r"),
+                bo_only[_bc].sort_values("tan_delta").head(30),
+                column_config=_col_cfg_b,
                 width="stretch",
                 height=400,
             )
