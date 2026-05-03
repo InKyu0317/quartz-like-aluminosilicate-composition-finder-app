@@ -37,7 +37,7 @@ with st.sidebar:
     active_oxides = ALKALI_FREE_OXIDES if alkali_mode == "Alkali-free" else WITH_ALKALI_OXIDES
 
     eps_min, eps_max = st.slider(
-        "\u03b5_r range", min_value=3.0, max_value=15.0, value=(3.77, 10.0), step=0.1
+        "\u03b5_r range", min_value=3.0, max_value=15.0, value=(3.8, 10.0), step=0.1
     )
     max_n_oxides = st.slider(
         "Max oxide count", min_value=3, max_value=len(active_oxides), value=len(active_oxides),
