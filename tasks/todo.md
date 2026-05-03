@@ -32,3 +32,17 @@
   - Seed: 랜덤 검색 상위 N개를 초기 관측값으로 사용
   - 매 iteration: GP 적합 → 후보 생성(Exploitation 75% + Exploration 25%) → EI 최대 지점 GlassNet 평가
   - 결과: 수렴 곡선, 개선 이력 테이블(새 best 발견 시점만), 산화물 범위 차트(seed 범위 + BO best 오버레이)
+
+## 버그 수정 및 UI 개선 (2026-05)
+- [x] **테이블 jitter 해결**: HF Spaces 좁은 viewport에서 테이블/메트릭이 10px 주기로 무한 진동하던 현상 수정
+  - 원인: `section[data-testid='stMain']`의 `overflow-y: auto` → 수직 스크롤바 토글 피드백 루프
+  - 수정: CSS `overflow-y: scroll !important` 강제 적용 (`st.markdown` unsafe_allow_html)
+  - Playwright로 좁은 viewport(700px) 재현 후 80번 측정으로 unique=1 (jitter 완전 제거) 확인
+- [x] **BO 진행 표시 개선**: Run BO 버튼 실행 중 비활성화 + 버튼 바로 아래 progress bar + iteration 상태 텍스트
+  - 이전: `st.spinner` (전체 화면 차단) + 스크롤 아래 progress bar
+  - 현재: 버튼 비활성화(`disabled`) + `st.empty()` placeholder로 버튼 옆에 즉시 표시
+- [x] **BO 결과 열물성 보강**: BO 완료 후 P(glass) + Tg/Tx/Tliq/CTE/ΔT 자동 계산하여 BO 결과 테이블에 포함
+- [x] **Vega-Lite 경고 제거**: 조성 상세 뷰 `st.bar_chart` → matplotlib `barh`로 교체, 빈 데이터 가드 추가
+- [x] **슬라이더 grid 불일치 수정**: ε_r 슬라이더 기본값 3.77 → 3.80 (step=0.1 grid 정렬)
+- [x] **사이드바 테마 색상 경고 제거**: `.streamlit/config.toml`에 4개 색상 명시
+- [x] **불필요한 `width="small"` 제거**: 잘못된 jitter 진단으로 추가했던 column_config `width="small"` 전부 되돌림
