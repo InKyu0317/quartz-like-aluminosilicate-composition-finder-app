@@ -229,7 +229,20 @@ if rank <= len(df_view):
         st.write("**Composition (wt%)**")
         comp_df = pd.DataFrame(present.items(), columns=["Oxide", "wt%"]).set_index("Oxide")
         st.dataframe(comp_df.style.format({"wt%": "{:.1f}"}), width="stretch")
-        st.bar_chart(comp_df)
+        if present:
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+            _names = list(present.keys())
+            _vals = list(present.values())
+            _fig_c, _ax_c = plt.subplots(figsize=(4, max(len(_names) * 0.42 + 0.4, 2)))
+            _ax_c.barh(_names, _vals, color="#AED6F1")
+            _ax_c.set_xlabel("wt%")
+            _ax_c.tick_params(axis="y", labelsize=9)
+            _ax_c.invert_yaxis()
+            _fig_c.tight_layout()
+            st.pyplot(_fig_c)
+            plt.close(_fig_c)
 
 # ── Bayesian Optimization Refinement ─────────────────────────────────────────
 st.divider()
