@@ -26,6 +26,14 @@ WITH_ALKALI_OXIDES = ALKALI_FREE_OXIDES + ['Na2O', 'K2O', 'Li2O']
 
 # ── page config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Quartz-like Aluminosilicate Composition Finder", layout="wide")
+# Force vertical scrollbar always-visible to prevent layout-jitter feedback loop
+# (when content height oscillates around viewport height, scrollbar toggles on/off,
+#  changing available width by ~10px and causing tables to shake. Pinning the
+#  scrollbar removes the toggle.)
+st.markdown(
+    "<style>html { overflow-y: scroll !important; }</style>",
+    unsafe_allow_html=True,
+)
 st.title("Quartz-like Aluminosilicate Composition Finder")
 st.caption(f"GlassNet · quartz reference: tan\u03b4 = {TAN_QUARTZ:.6f}, \u03b5_r = 3.77")
 
@@ -188,7 +196,7 @@ _col_cfg = {
     "tan_delta":                           st.column_config.NumberColumn("tanδ", format="%.6f", width="small"),
     "\u00d7quartz":                        st.column_config.NumberColumn(format="%.2f\u00d7", width="small"),
     "score":                               st.column_config.NumberColumn(format="%.4f", width="small"),
-    "n_oxides":                            st.column_config.NumberColumn("#ox", width="small"),
+    "n_oxides":                            st.column_config.NumberColumn("#oxides", width="small"),
     "P(glass)":                            st.column_config.NumberColumn(format="%.2f", width="small"),
     "Tg (\u00b0C)":                        st.column_config.NumberColumn(format="%.0f", width="small"),
     "Tx (\u00b0C)":                        st.column_config.NumberColumn(format="%.0f", width="small"),
@@ -426,8 +434,8 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
                     "eps_r":    st.column_config.NumberColumn("ε_r",   format="%.3f", width="small"),
                     "tan_delta": st.column_config.NumberColumn("tanδ",  format="%.6f", width="small"),
                     COL_XQUARTZ: st.column_config.NumberColumn(format="%.2f×", width="small"),
-                    "bo_iter":  st.column_config.NumberColumn("iter", width="small"),
-                    "n_oxides": st.column_config.NumberColumn("#ox", width="small"),
+                    "bo_iter":  st.column_config.NumberColumn(width="small"),
+                    "n_oxides": st.column_config.NumberColumn("#oxides", width="small"),
                     "p_glass":  st.column_config.NumberColumn("P(glass)", format="%.2f", width="small"),
                     "Tg_K":     st.column_config.NumberColumn("Tg (°C)",   format="%.0f", width="small"),
                     "Tx_K":     st.column_config.NumberColumn("Tx (°C)",   format="%.0f", width="small"),
@@ -488,8 +496,8 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
                 "eps_r":    st.column_config.NumberColumn("ε_r",   format="%.3f", width="small"),
                 "tan_delta": st.column_config.NumberColumn("tanδ",  format="%.6f", width="small"),
                 COL_XQUARTZ: st.column_config.NumberColumn(format="%.2f×", width="small"),
-                "bo_iter":  st.column_config.NumberColumn("iter", width="small"),
-                "n_oxides": st.column_config.NumberColumn("#ox", width="small"),
+                "bo_iter":  st.column_config.NumberColumn(width="small"),
+                "n_oxides": st.column_config.NumberColumn("#oxides", width="small"),
                 "p_glass":  st.column_config.NumberColumn("P(glass)", format="%.2f", width="small"),
                 "Tg_K":     st.column_config.NumberColumn("Tg (°C)",   format="%.0f", width="small"),
                 "Tx_K":     st.column_config.NumberColumn("Tx (°C)",   format="%.0f", width="small"),
