@@ -296,7 +296,11 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
                 df_view["tan_delta"].min() / TAN_QUARTZ if len(df_view) else float("nan"),
             )
         )
-        run_bo_btn = st.button("▶ Run BO Refinement", type="secondary", key="run_bo_btn")
+        run_bo_btn = st.button("▶ Run BO Refinement", type="secondary", key="run_bo_btn",
+                               disabled=st.session_state.get("bo_running", False))
+        # Placeholders rendered immediately below the button — visible without scrolling
+        _bo_status_ph  = st.empty()
+        _bo_bar_ph     = st.empty()
 
     # ── Seed composition range chart ─────────────────────────────────────────
     # Always shown; BO best overlaid once BO has been run.
@@ -350,48 +354,49 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
 
     # ── Run BO ───────────────────────────────────────────────────────────────
     if run_bo_btn:
+        st.session_state["bo_running"] = True
         seed_df_bo = df_view.head(bo_seed_n)[oxide_cols + ["eps_r", "tan_delta"]].copy()
-        progress_bar = st.progress(0.0)
-        status_txt   = st.empty()
+        _bo_status_ph.caption("⏳ GP-BO 준비 중…")
+        progress_bar = _bo_bar_ph.progress(0.0)
         bo_log: list[float] = []
 
         def _bo_cb(i: int, total: int, best: float) -> None:
             bo_log.append(best)
             progress_bar.progress(i / total)
-            status_txt.caption(
-                f"Iteration {i}/{total} — best: {best:.6f} ({best/TAN_QUARTZ:.2f}×quartz)"
+            _bo_status_ph.caption(
+                f"🔄 Iteration {i}/{total} — best tanδ: {best:.6f} ({best/TAN_QUARTZ:.2f}×quartz)"
             )
 
-        with st.spinner(f"GP-BO 실행 중 ({bo_n_iter}회 반복)…"):
-            bo_result = _run_bo(
-                load_predictor(),
-                oxide_cols=oxide_cols,
-                seed_df=seed_df_bo,
-                n_iter=bo_n_iter,
-                n_candidates=5_000,
-                eps_r_range=(eps_min, eps_max),
-                oxide_threshold=OXIDE_THRESHOLD,
-                rng_seed=42,
-                callback=_bo_cb,
-            )
+        bo_result = _run_bo(
+            load_predictor(),
+            oxide_cols=oxide_cols,
+            seed_df=seed_df_bo,
+            n_iter=bo_n_iter,
+            n_candidates=5_000,
+            eps_r_range=(eps_min, eps_max),
+            oxide_threshold=OXIDE_THRESHOLD,
+            rng_seed=42,
+            callback=_bo_cb,
+        )
 
         progress_bar.progress(1.0)
-        status_txt.empty()
+        _bo_status_ph.caption(f"✅ 완료 — {bo_n_iter}회 반복")
 
         # ── Augment BO result with P(glass) + thermal properties ──────────────
-        with st.spinner("VITRIFY / thermal 예측 중…"):
-            _pred = load_predictor()
-            _mol  = wt_to_mol_frame(bo_result[oxide_cols].fillna(0.0))
-            bo_result["p_glass"] = _pred.batch_glass_probability(_mol)
-            _th = _pred.batch_thermal(_mol)
-            bo_result["Tg_K"]   = _th["Tg"].to_numpy() - 273.15
-            bo_result["Tx_K"]   = _th["Tx"].to_numpy() - 273.15
-            bo_result["Tliq_K"] = _th["Tliquidus"].to_numpy() - 273.15
-            bo_result["CTE_1e6"] = _th["CTE_per_K"].to_numpy() * 1e6
-            bo_result["dT_K"]   = _th["delta_T"].to_numpy()
+        _bo_status_ph.caption("⏳ VITRIFY / thermal 예측 중…")
+        _pred = load_predictor()
+        _mol  = wt_to_mol_frame(bo_result[oxide_cols].fillna(0.0))
+        bo_result["p_glass"] = _pred.batch_glass_probability(_mol)
+        _th = _pred.batch_thermal(_mol)
+        bo_result["Tg_K"]   = _th["Tg"].to_numpy() - 273.15
+        bo_result["Tx_K"]   = _th["Tx"].to_numpy() - 273.15
+        bo_result["Tliq_K"] = _th["Tliquidus"].to_numpy() - 273.15
+        bo_result["CTE_1e6"] = _th["CTE_per_K"].to_numpy() * 1e6
+        bo_result["dT_K"]   = _th["delta_T"].to_numpy()
 
-        st.session_state["bo_result"] = bo_result
-        st.session_state["bo_log"]    = bo_log
+        st.session_state["bo_result"]  = bo_result
+        st.session_state["bo_log"]     = bo_log
+        st.session_state["bo_running"] = False
         st.rerun()  # re-render to show updated range chart with BO best overlay
 
     # ── Persist BO results ────────────────────────────────────────────────────
