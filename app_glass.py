@@ -131,9 +131,10 @@ def run_search(oxide_tuple, eps_min, eps_max, n_samples, max_n_oxides, seed=0):
 # ── run only when button clicked ──────────────────────────────────────────────
 # Auto-compute n_samples from ε_r range width.
 # Anchor: width=4 → 20,000 (so any width≥4 hits the ceiling).
-# Narrower ranges scale down proportionally. Floor: 2,000. Ceiling: 20,000.
+# Narrower ranges scale down proportionally. Floor: 5,000 (top-1 stable across
+# seeds; benchmark showed 2k→33% / 5k→100% agreement). Ceiling: 20,000.
 _eps_width = eps_max - eps_min
-n_samples_auto = int(np.clip(round(_eps_width / 4.0 * 20_000 / 1_000) * 1_000, 2_000, 20_000))
+n_samples_auto = int(np.clip(round(_eps_width / 4.0 * 20_000 / 1_000) * 1_000, 5_000, 20_000))
 
 if run:
     df, oxide_cols, n_total, n_target = run_search(tuple(active_oxides), eps_min, eps_max, n_samples_auto, max_n_oxides)
