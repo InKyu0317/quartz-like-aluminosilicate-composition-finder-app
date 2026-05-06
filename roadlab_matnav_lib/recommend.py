@@ -156,7 +156,11 @@ def _sample_sparse_subsets(
     """Sample ``n_samples`` compositions with exactly equal counts per oxide number.
 
     Stratified by k (= intended subset size, min_k..max_k):
-    - Each k gets a fixed quota = n_samples // num_groups
+    - Per-k quota is fixed to ``n_samples // (K - min_k + 1)`` where K is the
+      total oxide pool size — independent of ``max_k``.  This means the sampling
+      density for k=3..min(max_k1, max_k2) is identical regardless of which
+      max_k is chosen, so top-1 candidates in the overlapping k range are stable.
+    - Total output ≤ n_samples when max_k < K (recommend() batching compensates).
     - Oversamples each k until quota is filled, so threshold dropout does not
       create imbalance between groups.
     - SiO2 is always included when present.
@@ -170,9 +174,15 @@ def _sample_sparse_subsets(
     sio2_idx = oxides_list.index("SiO2") if "SiO2" in oxides_list else None
     other_idx = np.array([i for i in range(K) if i != sio2_idx])
 
-    num_groups = max_k - min_k + 1
-    quota_base = n_samples // num_groups
-    remainder = n_samples % num_groups
+    # Fix quota per k based on the FULL oxide pool (K - min_k + 1 groups),
+    # not the active max_k.  This makes per-k density independent of max_k:
+    # changing max_oxide_count no longer redistributes samples between k=3..9,
+    # so top-1 candidates in the overlapping k range stay consistent.
+    # Trade-off: total output = (max_k - min_k + 1) * quota_base <= n_samples
+    # when max_k < K.  recommend() iterative batching handles any shortfall.
+    full_groups = K - min_k + 1
+    quota_base = n_samples // full_groups
+    remainder = n_samples % full_groups
 
     def _generate_batch_for_k(k: int, batch_size: int) -> pd.DataFrame:
         """Vectorized: generate batch_size rows each with k-oxide Dirichlet."""

@@ -58,15 +58,18 @@ class TestSparseSamplerDropRate:
     """_sample_sparse_subsets loses rows to threshold+SiO2 filter."""
 
     def test_sparse_max9_returns_fewer_than_n_samples(self):
-        """New quota-based sampler returns exactly n_samples rows — always fills quota."""
+        """With full_groups normalization, max_k=9 produces 7/9 * N rows (< N)."""
         df = _sample_sparse_subsets(OXIDES_11, N, max_k=9,
                                     oxide_threshold=THRESHOLD, seed=0, min_k=3)
-        assert len(df) == N, \
-            f"expected exactly {N} rows (quota filled), got {len(df)}"
+        # full_groups=9, active_groups=7 → expected ~N*7/9
+        expected_approx = N * 7 // 9
+        assert len(df) < N, \
+            f"max_k=9 should produce fewer than {N} rows with full_groups normalization, got {len(df)}"
+        assert len(df) >= expected_approx - 10, \
+            f"max_k=9 produced too few rows: {len(df)} < {expected_approx - 10}"
 
     def test_sparse_max9_survival_rate_below_full(self):
-        """Both full simplex and sparse now return exactly n_samples (quota-based).
-        Verify both produce the right count."""
+        """full_groups normalization: max_k=9 produces 7/9 of N, max_k=11 produces ~N."""
         raw_full = sample_simplex(OXIDES_11, N, seed=0)
         full_after = _apply_threshold(raw_full, THRESHOLD)
         # full simplex still loses a tiny number of rows
@@ -75,8 +78,8 @@ class TestSparseSamplerDropRate:
 
         sparse = _sample_sparse_subsets(OXIDES_11, N, max_k=9,
                                         oxide_threshold=THRESHOLD, seed=0, min_k=3)
-        assert len(sparse) == N, \
-            f"sparse sampler should return exactly {N} rows, got {len(sparse)}"
+        assert len(sparse) < N, \
+            f"sparse max_k=9 should return fewer than {N} rows with full_groups normalization, got {len(sparse)}"
 
     def test_sparse_max9_no_row_exceeds_max_k(self):
         """No row returned by sparse sampler with max_k=9 can have n_oxides > 9."""
@@ -148,11 +151,14 @@ class TestSurvivalRateBounds:
         # because even k=3 Dirichlet gives ~33% per component >> 1%.
         # The main source of candidate reduction in the app is the eps_r filter,
         # not the threshold.  These bounds reflect the observed ~90-100% survival.
-        (3,  0.85, 1.00),
-        (5,  0.85, 1.00),
-        (7,  0.85, 1.00),
-        (9,  0.70, 1.00),
-        (11, 0.60, 1.00),
+        # With full_groups=9 normalization, total = active_groups/9 * N.
+        # Rates: k=3→1/9≈0.11, k=5→3/9≈0.33, k=7→5/9≈0.56, k=9→7/9≈0.78, k=11→9/9=1.00
+        # Allow ±0.05 tolerance for remainder distribution.
+        (3,  0.10, 0.15),
+        (5,  0.30, 0.40),
+        (7,  0.53, 0.63),
+        (9,  0.74, 0.84),
+        (11, 0.95, 1.00),
     ])
     def test_survival_within_expected_range(
         self, max_k, expected_min_rate, expected_max_rate

@@ -45,30 +45,30 @@ def _topk_sig(df: pd.DataFrame, k: int = 1) -> list[tuple[str, float]]:
 # ── Claim 1: max=9 vs max=11 produce different sample distributions ─────────
 
 class TestStratificationChangesSamples:
-    def test_max9_vs_max11_overlap_rows_are_different(self):
-        """k=3..9 overlap region, but actual samples differ because
-        per-group quotas + RNG advancement differ."""
+    def test_max9_vs_max11_overlap_rows_are_identical_in_k3_9(self):
+        """After the quota-normalization fix, k=3..9 samples are bit-for-bit
+        identical between max_k=9 and max_k=11 at the same seed."""
         df9  = _sample_sparse_subsets(OXIDES_11, N, max_k=9,  oxide_threshold=THR, seed=42)
         df11 = _sample_sparse_subsets(OXIDES_11, N, max_k=11, oxide_threshold=THR, seed=42)
 
         n_ox_9  = (df9  > 0).sum(axis=1)
         n_ox_11 = (df11 > 0).sum(axis=1)
 
-        # Filter to the overlap k=3..9 only
+        # Filter to k=3..9 overlap only
         sub9  = df9.loc[n_ox_9.between(3, 9)].reset_index(drop=True)
         sub11 = df11.loc[n_ox_11.between(3, 9)].reset_index(drop=True)
 
-        # If samples were identical, an inner-merge would recover all of them.
-        # We round to 2 decimals to be robust to float jitter.
-        merge_cols = OXIDES_11
-        a = sub9[merge_cols].round(2)
-        b = sub11[merge_cols].round(2)
-        common = pd.merge(a, b, how="inner", on=merge_cols)
-        overlap_ratio = len(common) / max(len(a), 1)
-        assert overlap_ratio < 0.05, (
-            f"Expected <5% identical rows in k=3..9 overlap, got {overlap_ratio:.3f}. "
-            f"If this is high, sampling IS deterministic across max_k — would be unexpected."
+        # sub9 must be a subset of sub11's k=3..9 rows (sub11 may have extra rows
+        # from k=10/11 groups that dropped to ≤9 active oxides after threshold).
+        assert len(sub9) <= len(sub11), (
+            f"max_k=9 produced more k=3..9 rows than max_k=11: {len(sub9)} > {len(sub11)}"
         )
+        # All sub9 rows must appear in sub11 (sub9 is a strict prefix by RNG order)
+        merge_cols = OXIDES_11
+        a = sub9[merge_cols].round(2).head(len(sub9))
+        b = sub11[merge_cols].round(2).head(len(sub9))
+        identical = (a.values == b.values).all()
+        assert identical, "k=3..9 prefix rows differ between max_k=9 and max_k=11 — fix did not work."
 
     def test_per_k_quota_changes_with_max_k(self):
         """Number of rows per k changes when max_k changes (stratified equal)."""
@@ -116,8 +116,9 @@ class TestTopOneIsSamplingNoise:
         )
 
     def test_top1_changes_when_only_max_k_changes(self):
-        """Same seed, only max_k changes 9 → 11 → different top-1.
-        This is the user's exact observation — and it's expected."""
+        """After the quota-normalization fix, k=3..9 samples are identical between
+        max_k=9 and max_k=11 (same seed, same per-k quota), so the top-1
+        composition within the k=3..9 overlap must be the same."""
         df9 = _sample_sparse_subsets(OXIDES_11, N, max_k=9,  oxide_threshold=THR, seed=42)
         df11 = _sample_sparse_subsets(OXIDES_11, N, max_k=11, oxide_threshold=THR, seed=42)
 
@@ -126,4 +127,8 @@ class TestTopOneIsSamplingNoise:
 
         sig9  = tuple(_topk_sig(df9.drop(columns="_s")))
         sig11 = tuple(_topk_sig(df11.drop(columns="_s")))
-        assert sig9 != sig11, "Top-1 was identical across max_k — would contradict the explanation."
+        assert sig9 == sig11, (
+            f"Top-1 differed after quota-normalization fix — fix did not work.\n"
+            f"max_k=9  top1: {sig9}\n"
+            f"max_k=11 top1: {sig11}"
+        )

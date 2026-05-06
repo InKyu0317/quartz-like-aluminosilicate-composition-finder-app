@@ -129,14 +129,18 @@ class TestUniformDistribution:
 
     @pytest.mark.parametrize("max_k", [5, 7, 9, 11])
     def test_each_k_has_equal_quota(self, max_k):
-        """Each intended-k group must have exactly n//num_groups rows (±1)."""
+        """Per-k quota is fixed by full_groups = K - min_k + 1 (= 9 for 11 oxides).
+        Total output = (max_k - min_k + 1) * quota_base <= N when max_k < K."""
         df = _sample_sparse_subsets(OXIDES_11, N, max_k, THRESHOLD, seed=0, min_k=MIN_K)
-        num_groups = max_k - MIN_K + 1
-        expected = N // num_groups
-        # n_active doesn't always equal intended k (threshold may reduce),
-        # but total output size should be exactly N
-        assert len(df) == N, \
-            f"max_k={max_k}: expected {N} rows total, got {len(df)}"
+        full_groups = len(OXIDES_11) - MIN_K + 1  # always 9
+        quota_base = N // full_groups
+        active_groups = max_k - MIN_K + 1
+        expected_total = active_groups * quota_base
+        # Allow ±active_groups for remainder distribution
+        assert abs(len(df) - expected_total) <= active_groups, (
+            f"max_k={max_k}: expected ~{expected_total} rows (quota_base={quota_base}×{active_groups}), "
+            f"got {len(df)}"
+        )
 
     @pytest.mark.parametrize("max_k", [5, 7, 9, 11])
     def test_low_k_and_high_k_have_similar_counts(self, max_k):
