@@ -6,6 +6,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-download glasspy model files from Zenodo at build time (network available).
+# At runtime the versions.json cache will exist, so glasspy skips the download.
+RUN python -c "import glasspy"
+
 # Copy app code
 COPY . .
 
