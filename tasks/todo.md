@@ -46,3 +46,14 @@
 - [x] **슬라이더 grid 불일치 수정**: ε_r 슬라이더 기본값 3.77 → 3.80 (step=0.1 grid 정렬)
 - [x] **사이드바 테마 색상 경고 제거**: `.streamlit/config.toml`에 4개 색상 명시
 - [x] **불필요한 `width="small"` 제거**: 잘못된 jitter 진단으로 추가했던 column_config `width="small"` 전부 되돌림
+
+## 배포 이슈 수정 및 샘플링 안정성 개선 (2026-05 후반)
+- [x] **Streamlit 버전 핀 고정**: `requirements.txt`에 `streamlit==1.57.0` 명시 — HF Spaces에서 다른 버전 설치 시 frontend JS bundle hash 불일치로 `rehype-raw.*.js` 500 에러 + `<style>` 태그 텍스트 노출 발생
+- [x] **glasspy 모델 빌드 타임 다운로드**: `Dockerfile`에 `RUN python -c "import glasspy"` 추가 — 런타임 Zenodo API 호출 실패(`JSONDecodeError`) 방지
+- [x] **glasspy PerformanceWarning 억제**: `warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)` — 내부 DataFrame fragmentation 경고 로그 제거
+- [x] **n_samples floor 상향 2,000 → 5,000**: benchmark 실측 근거 (2k→33% / 5k→100% top-1 일치율). `tasks/bench_n_samples.py` 벤치마크 스크립트 추가
+- [x] **max_k 독립 quota 정규화**: `_sample_sparse_subsets`의 per-k 할당량 분모를 `max_k - min_k + 1` → `K - min_k + 1` (full pool 고정)으로 변경
+  - 효과: max_oxide_count 변경 시 k=3..min(max_k) 구간 샘플 동일 유지 (같은 seed)
+  - 이전 문제: max_k=9 vs 11에서 그룹수 달라 → RNG 진행 순서 다름 → top-1 조성 완전히 바뀜
+  - Prove-It 테스트 추가: `tests/test_topk_stability.py`
+- [x] **n_samples_auto max_k 연동**: `n_samples_auto = n_base × full_groups / active_groups` 로 스케일업 → recommend() 실제 출력 항상 ~n_base 유지. 사이드바 Auto target 표시도 실제 출력 수 기준으로 갱신
