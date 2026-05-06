@@ -41,7 +41,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.title("Quartz-like Aluminosilicate Composition Finder")
-st.caption(f"GlassNet · quartz reference: tan\u03b4 = {TAN_QUARTZ:.6f}, \u03b5_r = 3.77")
+st.caption(f"quartz reference: tan\u03b4 = {TAN_QUARTZ:.6f}, \u03b5_r = 3.77")
 
 # ── sidebar controls ──────────────────────────────────────────────────────────
 with st.sidebar:
@@ -60,7 +60,7 @@ with st.sidebar:
     top_n = st.slider("Rows to display", min_value=10, max_value=200, value=30)
     p_glass_min = st.slider(
         "P(glass) 최소", min_value=0.0, max_value=1.0, value=0.5, step=0.01,
-        help="VITRIFY 모델 기준 유리화 확률 하한. 재검색 없이 즉시 적용됩니다."
+        help="유리화 확률 하한. 재검색 없이 즉시 적용됩니다."
     )
     sio2_min = st.slider(
         "SiO₂ 최소 (wt%)", min_value=0.0, max_value=100.0, value=50.0, step=1.0,
@@ -85,7 +85,7 @@ with st.sidebar:
     st.caption("  ".join(f"`{ox}`" for ox in active_oxides))
 
 # ── model (cached) ────────────────────────────────────────────────────────────
-@st.cache_resource(show_spinner="GlassNet / VITRIFY 모델 로딩 중…")
+@st.cache_resource(show_spinner="모델 로딩 중…")
 def load_predictor():
     predictor = GlassPredictor()
     predictor.warm_up()   # load both ONNX models now (once), not on first search
@@ -298,7 +298,7 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
             "BO iterations",
             min_value=5, max_value=100, value=30,
             key="bo_n_iter",
-            help="각 iteration = GlassNet 1회 호출. 30회 기준 약 5~15초.",
+            help="BO iteration 수. 30회 기준 약 5~15초.",
         )
     with bo_col2:
         st.markdown("**현재 ε_r 범위**: `[{:.2f}, {:.2f}]` 로 고정 적용".format(eps_min, eps_max))
@@ -395,7 +395,7 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
         _bo_status_ph.caption(f"✅ 완료 — {bo_n_iter}회 반복")
 
         # ── Augment BO result with P(glass) + thermal properties ──────────────
-        _bo_status_ph.caption("⏳ VITRIFY / thermal 예측 중…")
+        _bo_status_ph.caption("⏳ 열물성 예측 중…")
         _pred = load_predictor()
         _mol  = wt_to_mol_frame(bo_result[oxide_cols].fillna(0.0))
         bo_result["p_glass"] = _pred.batch_glass_probability(_mol)
