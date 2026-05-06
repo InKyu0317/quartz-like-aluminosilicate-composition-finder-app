@@ -3,9 +3,12 @@
 Run:
     streamlit run app_glass.py
 """
+import warnings
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
 
 from roadlab_matnav_lib.predict import GlassPredictor
 from roadlab_matnav_lib.recommend import wt_to_mol_frame
