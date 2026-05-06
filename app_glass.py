@@ -75,8 +75,11 @@ with st.sidebar:
 
     st.divider()
     _eps_width = eps_max - eps_min
-    _n_auto = int(np.clip(round(_eps_width / 4.0 * 20_000 / 1_000) * 1_000, 2_000, 20_000))
-    st.caption(f"**Auto target**: {_n_auto:,}개 (ε_r 범위 {_eps_width:.1f} 기준)")
+    _n_base = int(np.clip(round(_eps_width / 4.0 * 20_000 / 1_000) * 1_000, 5_000, 20_000))
+    _full_groups = len(active_oxides) - 2  # min_k=3 → full_groups = K-2
+    _active_groups = max_n_oxides - 2
+    _n_auto = _n_base * _active_groups // _full_groups
+    st.caption(f"**Auto target**: {_n_auto:,}개 (ε_r 범위 {_eps_width:.1f} · max_oxide {max_n_oxides} 기준)")
     st.divider()
     st.caption(f"**Oxide pool** ({len(active_oxides)} oxides)")
     st.caption("  ".join(f"`{ox}`" for ox in active_oxides))
@@ -129,12 +132,17 @@ def run_search(oxide_tuple, eps_min, eps_max, n_samples, max_n_oxides, seed=0):
     return df, oxide_cols, n_total, n_samples
 
 # ── run only when button clicked ──────────────────────────────────────────────
-# Auto-compute n_samples from ε_r range width.
-# Anchor: width=4 → 20,000 (so any width≥4 hits the ceiling).
-# Narrower ranges scale down proportionally. Floor: 5,000 (top-1 stable across
-# seeds; benchmark showed 2k→33% / 5k→100% agreement). Ceiling: 20,000.
+# Auto-compute n_samples from ε_r range width + max_n_oxides.
+# Base: anchor width=4 → 20,000; floor 5,000; ceiling 20,000.
+# Then scale UP by full_groups/active_groups so that the actual produced sample
+# count (= base × active_groups/full_groups) matches the base target.
+# In other words, we ask _sample_sparse_subsets for more so that the k=3..max_k
+# output is equivalent to what max_k=11 would produce.
 _eps_width = eps_max - eps_min
-n_samples_auto = int(np.clip(round(_eps_width / 4.0 * 20_000 / 1_000) * 1_000, 5_000, 20_000))
+_n_base = int(np.clip(round(_eps_width / 4.0 * 20_000 / 1_000) * 1_000, 5_000, 20_000))
+_full_groups = len(active_oxides) - 2  # min_k=3 → K - min_k + 1 = K-2
+_active_groups = max_n_oxides - 2
+n_samples_auto = min(_n_base * _full_groups // _active_groups, 100_000)  # hard cap
 
 if run:
     df, oxide_cols, n_total, n_target = run_search(tuple(active_oxides), eps_min, eps_max, n_samples_auto, max_n_oxides)
@@ -180,7 +188,7 @@ col2.metric("Shown (after filter)", f"{len(df_view):,}")
 best = df_view.iloc[0] if len(df_view) else df.iloc[0]
 col3.metric("Best ε_r", f"{best['eps_r']:.3f}")
 col4.metric("Best tanδ / quartz", f"{best[COL_XQUARTZ]:.2f}×")
-col5.metric("ε_r width → n", f"{eps_max-eps_min:.1f} → {st.session_state.get('n_target', n_samples_auto):,}")
+col5.metric("ε_r width → n", f"{eps_max-eps_min:.1f} → {st.session_state.get('n_total', _n_base):,}")
 
 # ── table ─────────────────────────────────────────────────────────────────────
 COL_RENAME = {
