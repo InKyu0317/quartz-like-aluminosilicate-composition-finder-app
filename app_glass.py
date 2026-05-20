@@ -57,22 +57,23 @@ with st.sidebar:
     active_oxides = ALKALI_FREE_OXIDES if alkali_mode == "Alkali-free" else WITH_ALKALI_OXIDES
 
     eps_min, eps_max = st.slider(
-        "\u03b5_r range", min_value=3.0, max_value=15.0, value=(3.8, 10.0), step=0.1
+        "\u03b5_r (유전상수)", min_value=3.0, max_value=15.0, value=(3.8, 10.0), step=0.1,
+        help="유전율 범위. 석영(quartz) 기준값: \u03b5_r = 3.77. **Re-Run Search** 시 적용됩니다."
     )
     tan_target = st.slider(
-        "Target tan\u03b4",
+        "tan\u03b4 (유전손실)",
         min_value=0.0001,
         max_value=0.002,
         value=TAN_QUARTZ,
         step=0.000001,
         format="%.6f",
         help=(
-            "유전 손실 목표값. 기본값은 석영 수준 tan\u03b4 = 0.000198. "
+            "유전 손실 목표값. 석영(quartz) 기준값: tan\u03b4 = 0.000198. "
             "이 값에 가까울수록 score가 높아집니다. **Re-Run Search** 시 적용됩니다."
         ),
     )
     p_glass_min = st.slider(
-        "P(glass) 최소", min_value=0.0, max_value=1.0, value=0.5, step=0.01,
+        "유리화 확률 최소 (%)", min_value=0, max_value=100, value=50, step=1,
         help="유리화 확률 하한. 재검색 없이 즉시 적용됩니다."
     )
     tg_range = st.slider(
@@ -208,7 +209,7 @@ cte_mask = (
 ) if "CTE_1e6" in df.columns else True
 # n_oxides range is guaranteed by recommend() — no additional filter needed here
 df_view = df[
-    (df["p_glass"] >= p_glass_min) &
+    (df["p_glass"] >= p_glass_min / 100) &
     sio2_mask &
     al2o3_mask &
     tg_mask &
@@ -226,7 +227,7 @@ col5.metric("ε_r width → n", f"{eps_max-eps_min:.1f} → {st.session_state.ge
 
 # ── table ─────────────────────────────────────────────────────────────────────
 COL_RENAME = {
-    "p_glass":  "P(glass)",
+    "p_glass":  "유리화 확률 (%)",
     "Tg_C":     "Tg (°C)",
     "Tx_C":     "Tx (°C)",
     "Tliq_C":   "Tliq (°C)",
@@ -238,14 +239,16 @@ display_cols = (
     + ["p_glass", "Tg_C", "Tx_C", "Tliq_C", "CTE_1e6", "dT_C"]
     + [c for c in oxide_cols if c in df_view.columns]
 )
-df_display = df_view[display_cols].rename(columns=COL_RENAME)
+_df_view_disp = df_view.copy()
+_df_view_disp["p_glass"] = (_df_view_disp["p_glass"] * 100).round(1)
+df_display = _df_view_disp[display_cols].rename(columns=COL_RENAME)
 _col_cfg = {
     "eps_r":                               st.column_config.NumberColumn("ε_r",  format="%.3f"),
     "tan_delta":                           st.column_config.NumberColumn("tanδ", format="%.6f"),
     "\u00d7quartz":                        st.column_config.NumberColumn(format="%.2f\u00d7"),
     "score":                               st.column_config.NumberColumn(format="%.4f"),
     "n_oxides":                            st.column_config.NumberColumn("#oxides"),
-    "P(glass)":                            st.column_config.NumberColumn(format="%.2f"),
+    "유리화 확률 (%)":                      st.column_config.NumberColumn(format="%.1f"),
     "Tg (\u00b0C)":                        st.column_config.NumberColumn(format="%.0f"),
     "Tx (\u00b0C)":                        st.column_config.NumberColumn(format="%.0f"),
     "Tliq (\u00b0C)":                      st.column_config.NumberColumn(format="%.0f"),
@@ -257,7 +260,7 @@ _styled = (
     df_display.style
         .background_gradient(subset=["score"],         cmap="RdYlGn")
         .background_gradient(subset=["tan_delta"],     cmap="RdYlGn_r")
-        .background_gradient(subset=["P(glass)"],      cmap="Blues")
+        .background_gradient(subset=["유리화 확률 (%)"],  cmap="Blues")
         .background_gradient(subset=["eps_r"],         cmap="YlOrRd_r")
         .background_gradient(subset=["\u00d7quartz"],  cmap="RdYlGn_r")
         .background_gradient(subset=["n_oxides"],      cmap="Purples")
@@ -282,7 +285,7 @@ if rank <= len(df_view):
         st.write(f"**tan\u03b4** = {row['tan_delta']:.6f}  ({row[COL_XQUARTZ]:.2f}\u00d7 quartz)")
         st.write(f"**n_oxides** = {int(row['n_oxides'])}")
         st.divider()
-        st.write(f"**P(glass)** = {row['p_glass']:.2f}")
+        st.write(f"**유리화 확률** = {row['p_glass']*100:.1f}%")
         st.write(f"**Tg** = {row['Tg_C']:.0f} °C")
         st.write(f"**Tx** = {row['Tx_C']:.0f} °C  (\u0394T = {row['dT_C']:.0f} °C)")
         st.write(f"**Tliq** = {row['Tliq_C']:.0f} °C")
@@ -477,6 +480,8 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
                 trace = trace.sort_values("bo_iter")
                 trace[COL_XQUARTZ] = (trace["tan_delta"] / TAN_QUARTZ).round(2)
                 trace["n_oxides"]  = (trace[oxide_cols].fillna(0) > OXIDE_THRESHOLD).sum(axis=1)
+                if "p_glass" in trace.columns:
+                    trace["p_glass"] = (trace["p_glass"] * 100).round(1)
                 _prop_cols = [c for c in ["p_glass", "Tg_C", "Tx_C", "Tliq_C", "CTE_1e6", "dT_C"] if c in trace.columns]
                 _tc = (["bo_iter", "eps_r", "tan_delta", COL_XQUARTZ, "n_oxides"]
                         + _prop_cols
@@ -487,7 +492,7 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
                     COL_XQUARTZ: st.column_config.NumberColumn(format="%.2f×"),
                     "bo_iter":  st.column_config.NumberColumn(),
                     "n_oxides": st.column_config.NumberColumn("#oxides"),
-                    "p_glass":  st.column_config.NumberColumn("P(glass)", format="%.2f"),
+                    "p_glass":  st.column_config.NumberColumn("유리화 확률 (%)", format="%.1f"),
                     "Tg_C":     st.column_config.NumberColumn("Tg (°C)",   format="%.0f"),
                     "Tx_C":     st.column_config.NumberColumn("Tx (°C)",   format="%.0f"),
                     "Tliq_C":   st.column_config.NumberColumn("Tliq (°C)", format="%.0f"),
@@ -537,6 +542,8 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
         if len(bo_only):
             bo_only[COL_XQUARTZ] = (bo_only["tan_delta"] / TAN_QUARTZ).round(2)
             bo_only["n_oxides"]  = (bo_only[oxide_cols].fillna(0) > OXIDE_THRESHOLD).sum(axis=1)
+            if "p_glass" in bo_only.columns:
+                bo_only["p_glass"] = (bo_only["p_glass"] * 100).round(1)
             st.markdown("**전체 BO 발견 조성** (tanδ 오름차순)")
             _prop_cols_b = [c for c in ["p_glass", "Tg_C", "Tx_C", "Tliq_C", "CTE_1e6", "dT_C"] if c in bo_only.columns]
             _bc = (["eps_r", "tan_delta", COL_XQUARTZ, "n_oxides"]
@@ -549,7 +556,7 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
                 COL_XQUARTZ: st.column_config.NumberColumn(format="%.2f×"),
                 "bo_iter":  st.column_config.NumberColumn(),
                 "n_oxides": st.column_config.NumberColumn("#oxides"),
-                "p_glass":  st.column_config.NumberColumn("P(glass)", format="%.2f"),
+                "p_glass":  st.column_config.NumberColumn("유리화 확률 (%)", format="%.1f"),
                 "Tg_C":     st.column_config.NumberColumn("Tg (°C)",   format="%.0f"),
                 "Tx_C":     st.column_config.NumberColumn("Tx (°C)",   format="%.0f"),
                 "Tliq_C":   st.column_config.NumberColumn("Tliq (°C)", format="%.0f"),
