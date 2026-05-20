@@ -71,23 +71,9 @@ with st.sidebar:
             "이 값에 가까울수록 score가 높아집니다. **Re-Run Search** 시 적용됩니다."
         ),
     )
-    max_n_oxides = st.slider(
-        "Max oxide count", min_value=3, max_value=len(active_oxides), value=len(active_oxides),
-        help="이 값을 변경하면 **Re-Run Search**가 필요합니다. 줄이면 해당 수 이하의 산화물 조합에서 직접 샘플링합니다."
-    )
-    top_n = st.slider("Rows to display", min_value=10, max_value=200, value=30)
     p_glass_min = st.slider(
         "P(glass) 최소", min_value=0.0, max_value=1.0, value=0.5, step=0.01,
         help="유리화 확률 하한. 재검색 없이 즉시 적용됩니다."
-    )
-    sio2_min = st.slider(
-        "SiO₂ 최소 (wt%)", min_value=0.0, max_value=100.0, value=50.0, step=1.0,
-        help="SiO₂ 함량 하한. 재검색 없이 즉시 적용됩니다."
-    )
-    al2o3_second = st.checkbox(
-        "Al₂O₃ 2위 조건",
-        value=True,
-        help="Al₂O₃이 SiO₂ 다음으로 가장 많은 산화물이어야 함 (알루미노실리케이트 정의). 재검색 없이 즉시 적용됩니다."
     )
     tg_range = st.slider(
         "Tg 범위 (°C)", min_value=0, max_value=1500, value=(0, 1500), step=10,
@@ -96,6 +82,20 @@ with st.sidebar:
     cte_range = st.slider(
         "CTE 범위 (×10⁻⁶/K)", min_value=0.0, max_value=20.0, value=(0.0, 20.0), step=0.1,
         help="열팽창계수 필터. 재검색 없이 즉시 적용됩니다."
+    )
+    sio2_min = st.slider(
+        "SiO₂ 최소 (wt%)", min_value=0.0, max_value=100.0, value=50.0, step=1.0,
+        help="SiO₂ 함량 하한. 재검색 없이 즉시 적용됩니다."
+    )
+    max_n_oxides = st.slider(
+        "Max oxide count", min_value=3, max_value=len(active_oxides), value=len(active_oxides),
+        help="이 값을 변경하면 **Re-Run Search**가 필요합니다. 줄이면 해당 수 이하의 산화물 조합에서 직접 샘플링합니다."
+    )
+    top_n = st.slider("Rows to display", min_value=10, max_value=200, value=30)
+    al2o3_second = st.checkbox(
+        "Al₂O₃ 2위 조건",
+        value=True,
+        help="Al₂O₃이 SiO₂ 다음으로 가장 많은 산화물이어야 함 (알루미노실리케이트 정의). 재검색 없이 즉시 적용됩니다."
     )
     run = st.button("Run Search", type="primary", disabled=(glass_type == "— 선택 —"))
 
