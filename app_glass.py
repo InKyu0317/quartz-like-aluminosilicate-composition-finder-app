@@ -41,7 +41,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.title("Glass Pilot")
-st.caption(f"quartz reference: tan\u03b4 = {TAN_QUARTZ:.6f}, \u03b5_r = 3.77")
 
 # ── sidebar controls ──────────────────────────────────────────────────────────
 with st.sidebar:
@@ -59,6 +58,18 @@ with st.sidebar:
 
     eps_min, eps_max = st.slider(
         "\u03b5_r range", min_value=3.0, max_value=15.0, value=(3.8, 10.0), step=0.1
+    )
+    tan_target = st.slider(
+        "Target tan\u03b4",
+        min_value=0.0001,
+        max_value=0.002,
+        value=TAN_QUARTZ,
+        step=0.000001,
+        format="%.6f",
+        help=(
+            "유전 손실 목표값. 기본값은 석영 수준 tan\u03b4 = 0.000198. "
+            "이 값에 가까울수록 score가 높아집니다. **Re-Run Search** 시 적용됩니다."
+        ),
     )
     max_n_oxides = st.slider(
         "Max oxide count", min_value=3, max_value=len(active_oxides), value=len(active_oxides),
@@ -100,7 +111,7 @@ def load_predictor():
 
 # ── search (cached by params) ─────────────────────────────────────────────────
 @st.cache_data(show_spinner="\uc870\uc131 \uc0d8\ud50c\ub9c1 \uc911\u2026", max_entries=8)
-def run_search(oxide_tuple, eps_min, eps_max, n_samples, max_n_oxides, seed=0):
+def run_search(oxide_tuple, eps_min, eps_max, n_samples, max_n_oxides, tan_target=TAN_QUARTZ, seed=0):
     predictor = load_predictor()
     oxides = list(oxide_tuple)
     use_sparse = max_n_oxides < len(oxides)
@@ -116,9 +127,9 @@ def run_search(oxide_tuple, eps_min, eps_max, n_samples, max_n_oxides, seed=0):
     )
 
     oxide_cols = [c for c in oxides if c in df.columns]
-    df["score"]    = 1.0 / (1.0 + np.abs(df["tan_delta"] - TAN_QUARTZ) / TAN_QUARTZ)
+    df["score"]    = 1.0 / (1.0 + np.abs(df["tan_delta"] - tan_target) / tan_target)
     df["n_oxides"] = (df[oxide_cols] > OXIDE_THRESHOLD).sum(axis=1).astype(int)
-    df["\u00d7quartz"] = (df["tan_delta"] / TAN_QUARTZ).round(2)
+    df["\u00d7quartz"] = (df["tan_delta"] / tan_target).round(2)
 
     # Sort first so VITRIFY/thermal run only on the best-scoring rows
     df = df.sort_values(["score", "n_oxides"], ascending=[False, True]).reset_index(drop=True)
@@ -152,7 +163,7 @@ _active_groups = max_n_oxides - 2
 n_samples_auto = min(_n_base * _full_groups // _active_groups, 100_000)  # hard cap
 
 if run:
-    df, oxide_cols, n_total, n_target = run_search(tuple(active_oxides), eps_min, eps_max, n_samples_auto, max_n_oxides)
+    df, oxide_cols, n_total, n_target = run_search(tuple(active_oxides), eps_min, eps_max, n_samples_auto, max_n_oxides, tan_target=tan_target)
     st.session_state["df"] = df
     st.session_state["searched_max_n_oxides"] = max_n_oxides
     st.session_state["oxide_cols"] = oxide_cols
