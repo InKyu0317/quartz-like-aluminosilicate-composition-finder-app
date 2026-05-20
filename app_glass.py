@@ -89,6 +89,14 @@ with st.sidebar:
         value=True,
         help="Al₂O₃이 SiO₂ 다음으로 가장 많은 산화물이어야 함 (알루미노실리케이트 정의). 재검색 없이 즉시 적용됩니다."
     )
+    tg_range = st.slider(
+        "Tg 범위 (°C)", min_value=0, max_value=1500, value=(0, 1500), step=10,
+        help="유리전이온도 필터. 재검색 없이 즉시 적용됩니다."
+    )
+    cte_range = st.slider(
+        "CTE 범위 (×10⁻⁶/K)", min_value=0.0, max_value=20.0, value=(0.0, 20.0), step=0.1,
+        help="열팽창계수 필터. 재검색 없이 즉시 적용됩니다."
+    )
     run = st.button("Run Search", type="primary", disabled=(glass_type == "— 선택 —"))
 
     st.divider()
@@ -192,11 +200,19 @@ if al2o3_second and "Al2O3" in df.columns:
         al2o3_mask = True  # no other oxides to compare
 else:
     al2o3_mask = True
+tg_mask = (
+    (df["Tg_C"] >= tg_range[0]) & (df["Tg_C"] <= tg_range[1])
+) if "Tg_C" in df.columns else True
+cte_mask = (
+    (df["CTE_1e6"] >= cte_range[0]) & (df["CTE_1e6"] <= cte_range[1])
+) if "CTE_1e6" in df.columns else True
 # n_oxides range is guaranteed by recommend() — no additional filter needed here
 df_view = df[
     (df["p_glass"] >= p_glass_min) &
     sio2_mask &
-    al2o3_mask
+    al2o3_mask &
+    tg_mask &
+    cte_mask
 ].head(top_n)
 
 # ── metrics row ───────────────────────────────────────────────────────────────
