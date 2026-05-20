@@ -260,9 +260,8 @@ def recommend(
 
     * **ε_r component** – ``1 - |eps_r - mid(eps_r_range)| / half_width``,
       clipped to [0, 1].  1 = perfect centre of the ε_r target window.
-    * **tan δ component** – raw ``tan_delta`` value (no normalisation).
-      Higher tan δ → higher score → better rank.
-      Raw values are used so cross-preset comparisons remain correct.
+    * **tan δ component** – ``1 / (1 + tan_delta)``, so lower tan δ →
+      higher component → better rank.  Values lie in (0, 1].
 
     ``score = w_eps * eps_component + w_tan * tan_component``
     where ``(w_eps, w_tan) = score_weights`` (default ``(0.0, 1.0)`` —
@@ -378,7 +377,10 @@ def recommend(
         eps_component = np.ones(len(kept))
 
     if w_tan > 0.0 and len(kept) > 0:
-        tan_component = kept["tan_delta"].to_numpy()
+        tan = kept["tan_delta"].to_numpy()
+        # Lower tan_delta is better (quartz-like goal).  Use 1/(1+tan) so that
+        # smaller tan maps to a value closer to 1 and sorts to the top.
+        tan_component = np.where(np.isfinite(tan), 1.0 / (1.0 + tan), 0.0)
     else:
         tan_component = np.zeros(len(kept))
 

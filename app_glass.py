@@ -122,11 +122,11 @@ def run_search(oxide_tuple, eps_min, eps_max, n_samples, max_n_oxides, seed=0):
     mol_df = wt_to_mol_frame(df[oxide_cols].fillna(0.0))
     df["p_glass"] = predictor.batch_glass_probability(mol_df)
     thermal = predictor.batch_thermal(mol_df)
-    df["Tg_K"]    = thermal["Tg"].to_numpy() - 273.15
-    df["Tx_K"]    = thermal["Tx"].to_numpy() - 273.15
-    df["Tliq_K"]  = thermal["Tliquidus"].to_numpy() - 273.15
+    df["Tg_C"]    = thermal["Tg"].to_numpy() - 273.15
+    df["Tx_C"]    = thermal["Tx"].to_numpy() - 273.15
+    df["Tliq_C"]  = thermal["Tliquidus"].to_numpy() - 273.15
     df["CTE_1e6"] = thermal["CTE_per_K"].to_numpy() * 1e6
-    df["dT_K"]    = thermal["delta_T"].to_numpy()
+    df["dT_C"]    = thermal["delta_T"].to_numpy()
 
     df.index += 1  # 1-based rank
     return df, oxide_cols, n_total, n_samples
@@ -193,15 +193,15 @@ col5.metric("ε_r width → n", f"{eps_max-eps_min:.1f} → {st.session_state.ge
 # ── table ─────────────────────────────────────────────────────────────────────
 COL_RENAME = {
     "p_glass":  "P(glass)",
-    "Tg_K":     "Tg (°C)",
-    "Tx_K":     "Tx (°C)",
-    "Tliq_K":   "Tliq (°C)",
+    "Tg_C":     "Tg (°C)",
+    "Tx_C":     "Tx (°C)",
+    "Tliq_C":   "Tliq (°C)",
     "CTE_1e6":  "CTE (\u00d710\u207b\u2076/\u00b0C)",
-    "dT_K":     "\u0394T (\u00b0C)",
+    "dT_C":     "\u0394T (\u00b0C)",
 }
 display_cols = (
     ["eps_r", "tan_delta", "\u00d7quartz", "score", "n_oxides"]
-    + ["p_glass", "Tg_K", "Tx_K", "Tliq_K", "CTE_1e6", "dT_K"]
+    + ["p_glass", "Tg_C", "Tx_C", "Tliq_C", "CTE_1e6", "dT_C"]
     + [c for c in oxide_cols if c in df_view.columns]
 )
 df_display = df_view[display_cols].rename(columns=COL_RENAME)
@@ -249,9 +249,9 @@ if rank <= len(df_view):
         st.write(f"**n_oxides** = {int(row['n_oxides'])}")
         st.divider()
         st.write(f"**P(glass)** = {row['p_glass']:.2f}")
-        st.write(f"**Tg** = {row['Tg_K']:.0f} °C")
-        st.write(f"**Tx** = {row['Tx_K']:.0f} °C  (\u0394T = {row['dT_K']:.0f} °C)")
-        st.write(f"**Tliq** = {row['Tliq_K']:.0f} °C")
+        st.write(f"**Tg** = {row['Tg_C']:.0f} °C")
+        st.write(f"**Tx** = {row['Tx_C']:.0f} °C  (\u0394T = {row['dT_C']:.0f} °C)")
+        st.write(f"**Tliq** = {row['Tliq_C']:.0f} °C")
         st.write(f"**CTE** = {row['CTE_1e6']:.2f} \u00d710\u207b\u2076/°C")
     with c2:
         st.write("**Composition (wt%)**")
@@ -400,11 +400,11 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
         _mol  = wt_to_mol_frame(bo_result[oxide_cols].fillna(0.0))
         bo_result["p_glass"] = _pred.batch_glass_probability(_mol)
         _th = _pred.batch_thermal(_mol)
-        bo_result["Tg_K"]   = _th["Tg"].to_numpy() - 273.15
-        bo_result["Tx_K"]   = _th["Tx"].to_numpy() - 273.15
-        bo_result["Tliq_K"] = _th["Tliquidus"].to_numpy() - 273.15
+        bo_result["Tg_C"]   = _th["Tg"].to_numpy() - 273.15
+        bo_result["Tx_C"]   = _th["Tx"].to_numpy() - 273.15
+        bo_result["Tliq_C"] = _th["Tliquidus"].to_numpy() - 273.15
         bo_result["CTE_1e6"] = _th["CTE_per_K"].to_numpy() * 1e6
-        bo_result["dT_K"]   = _th["delta_T"].to_numpy()
+        bo_result["dT_C"]   = _th["delta_T"].to_numpy()
 
         st.session_state["bo_result"]  = bo_result
         st.session_state["bo_log"]     = bo_log
@@ -443,7 +443,7 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
                 trace = trace.sort_values("bo_iter")
                 trace[COL_XQUARTZ] = (trace["tan_delta"] / TAN_QUARTZ).round(2)
                 trace["n_oxides"]  = (trace[oxide_cols].fillna(0) > OXIDE_THRESHOLD).sum(axis=1)
-                _prop_cols = [c for c in ["p_glass", "Tg_K", "Tx_K", "Tliq_K", "CTE_1e6", "dT_K"] if c in trace.columns]
+                _prop_cols = [c for c in ["p_glass", "Tg_C", "Tx_C", "Tliq_C", "CTE_1e6", "dT_C"] if c in trace.columns]
                 _tc = (["bo_iter", "eps_r", "tan_delta", COL_XQUARTZ, "n_oxides"]
                         + _prop_cols
                         + [c for c in oxide_cols if c in trace.columns])
@@ -454,11 +454,11 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
                     "bo_iter":  st.column_config.NumberColumn(),
                     "n_oxides": st.column_config.NumberColumn("#oxides"),
                     "p_glass":  st.column_config.NumberColumn("P(glass)", format="%.2f"),
-                    "Tg_K":     st.column_config.NumberColumn("Tg (°C)",   format="%.0f"),
-                    "Tx_K":     st.column_config.NumberColumn("Tx (°C)",   format="%.0f"),
-                    "Tliq_K":   st.column_config.NumberColumn("Tliq (°C)", format="%.0f"),
+                    "Tg_C":     st.column_config.NumberColumn("Tg (°C)",   format="%.0f"),
+                    "Tx_C":     st.column_config.NumberColumn("Tx (°C)",   format="%.0f"),
+                    "Tliq_C":   st.column_config.NumberColumn("Tliq (°C)", format="%.0f"),
                     "CTE_1e6":  st.column_config.NumberColumn("CTE (×10⁻⁶/°C)", format="%.2f"),
-                    "dT_K":     st.column_config.NumberColumn("ΔT (°C)",   format="%.0f"),
+                    "dT_C":     st.column_config.NumberColumn("ΔT (°C)",   format="%.0f"),
                     **{c: st.column_config.NumberColumn(format="%.1f") for c in oxide_cols},
                 }
                 _styled_t = (
@@ -504,7 +504,7 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
             bo_only[COL_XQUARTZ] = (bo_only["tan_delta"] / TAN_QUARTZ).round(2)
             bo_only["n_oxides"]  = (bo_only[oxide_cols].fillna(0) > OXIDE_THRESHOLD).sum(axis=1)
             st.markdown("**전체 BO 발견 조성** (tanδ 오름차순)")
-            _prop_cols_b = [c for c in ["p_glass", "Tg_K", "Tx_K", "Tliq_K", "CTE_1e6", "dT_K"] if c in bo_only.columns]
+            _prop_cols_b = [c for c in ["p_glass", "Tg_C", "Tx_C", "Tliq_C", "CTE_1e6", "dT_C"] if c in bo_only.columns]
             _bc = (["eps_r", "tan_delta", COL_XQUARTZ, "n_oxides"]
                     + (["bo_iter"] if "bo_iter" in bo_only.columns else [])
                     + _prop_cols_b
@@ -516,11 +516,11 @@ with st.expander("🔬 Bayesian Optimization Refinement", expanded=False):
                 "bo_iter":  st.column_config.NumberColumn(),
                 "n_oxides": st.column_config.NumberColumn("#oxides"),
                 "p_glass":  st.column_config.NumberColumn("P(glass)", format="%.2f"),
-                "Tg_K":     st.column_config.NumberColumn("Tg (°C)",   format="%.0f"),
-                "Tx_K":     st.column_config.NumberColumn("Tx (°C)",   format="%.0f"),
-                "Tliq_K":   st.column_config.NumberColumn("Tliq (°C)", format="%.0f"),
+                "Tg_C":     st.column_config.NumberColumn("Tg (°C)",   format="%.0f"),
+                "Tx_C":     st.column_config.NumberColumn("Tx (°C)",   format="%.0f"),
+                "Tliq_C":   st.column_config.NumberColumn("Tliq (°C)", format="%.0f"),
                 "CTE_1e6":  st.column_config.NumberColumn("CTE (×10⁻⁶/°C)", format="%.2f"),
-                "dT_K":     st.column_config.NumberColumn("ΔT (°C)",   format="%.0f"),
+                "dT_C":     st.column_config.NumberColumn("ΔT (°C)",   format="%.0f"),
                 **{c: st.column_config.NumberColumn(format="%.1f") for c in oxide_cols},
             }
             _bo_top = bo_only[_bc].sort_values("tan_delta").head(30)
