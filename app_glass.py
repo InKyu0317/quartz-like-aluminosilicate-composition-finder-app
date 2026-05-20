@@ -1,4 +1,4 @@
-"""Streamlit dashboard — alkali-free aluminosilicate composition finder.
+"""Streamlit dashboard — Glass Pilot: glass composition finder.
 
 Run:
     streamlit run app_glass.py
@@ -28,7 +28,7 @@ ALKALI_FREE_OXIDES = [
 WITH_ALKALI_OXIDES = ALKALI_FREE_OXIDES + ['Na2O', 'K2O', 'Li2O']
 
 # ── page config ───────────────────────────────────────────────────────────────
-st.set_page_config(page_title="Quartz-like Aluminosilicate Composition Finder", layout="wide")
+st.set_page_config(page_title="Glass Pilot", layout="wide")
 # Force vertical scrollbar always-visible on the main Streamlit section to prevent
 # layout-jitter feedback loop. The culprit is section[data-testid="stMain"] which
 # has overflow-y:auto — when content height oscillates around the visible area height,
@@ -40,7 +40,7 @@ st.markdown(
     "</style>",
     unsafe_allow_html=True,
 )
-st.title("Quartz-like Aluminosilicate Composition Finder")
+st.title("Glass Pilot")
 st.caption(f"quartz reference: tan\u03b4 = {TAN_QUARTZ:.6f}, \u03b5_r = 3.77")
 
 # ── sidebar controls ──────────────────────────────────────────────────────────
