@@ -1,4 +1,4 @@
-"""Streamlit dashboard — Glass Pilot: glass composition finder.
+"""Streamlit dashboard — Glass Pilot: glassion finder.
 
 Run:
     streamlit run app_glass.py
@@ -47,6 +47,13 @@ st.caption(f"quartz reference: tan\u03b4 = {TAN_QUARTZ:.6f}, \u03b5_r = 3.77")
 with st.sidebar:
     st.header("Search Parameters")
 
+    glass_type = st.selectbox(
+        "Glass type",
+        ["— 선택 —", "Aluminosilicate"],
+        index=0,
+        help="분석할 유리 계열을 선택하세요. 선택 전에는 검색이 비활성화됩니다.",
+    )
+
     alkali_mode = st.radio("Alkali content", ["Alkali-free", "Include alkali"])
     active_oxides = ALKALI_FREE_OXIDES if alkali_mode == "Alkali-free" else WITH_ALKALI_OXIDES
 
@@ -71,7 +78,7 @@ with st.sidebar:
         value=True,
         help="Al₂O₃이 SiO₂ 다음으로 가장 많은 산화물이어야 함 (알루미노실리케이트 정의). 재검색 없이 즉시 적용됩니다."
     )
-    run = st.button("Run Search", type="primary")
+    run = st.button("Run Search", type="primary", disabled=(glass_type == "— 선택 —"))
 
     st.divider()
     _eps_width = eps_max - eps_min
