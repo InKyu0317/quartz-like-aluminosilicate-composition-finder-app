@@ -1,5 +1,5 @@
 ---
-title: Quartz-like Aluminosilicate Composition Finder
+title: Glass Pilot
 emoji: 🧪
 colorFrom: blue
 colorTo: indigo
@@ -8,11 +8,11 @@ app_port: 7860
 pinned: false
 ---
 
-# Quartz-like Aluminosilicate Composition Finder
+# Glass Pilot
 
-GlassNet(glasspy 0.6) + VITRIFY 모델 기반 알루미노실리케이트 유리 조성 탐색 Streamlit 앱.
+GlassNet(glasspy 0.6) + VITRIFY 모델 기반 유리 조성 탐색 Streamlit 앱.
 
-quartz(석영) 수준의 유전 특성(tan δ ≈ 0.000198, ε_r ≈ 3.77)을 목표로 최적 조성을 랜덤 샘플링 + 스코어링합니다.
+목표 유전 특성(tan δ, ε_r)에 가장 가까운 알루미노실리케이트 유리 조성을 랜덤 샘플링 + 스코어링합니다.
 
 ## 주요 기능
 
